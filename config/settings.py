@@ -30,5 +30,9 @@ class Settings(BaseSettings):
     browser_timeout_ms: int = 30_000
     retry_attempts: int = 3
 
+    # Impresión automática
+    auto_print: bool = True
+    printer_name: str = ""   # vacío = impresora predeterminada del sistema
+
 
 settings = Settings()
