@@ -2,16 +2,17 @@
 Punto de entrada CLI para procesar declaraciones de envases.
 
 Uso:
-    python main.py declarar input/albaranes.csv
+    python main.py declarar input/export.xls     ← fichero del ERP (XLS)
+    python main.py declarar input/albaranes.csv  ← alternativa CSV
     python main.py listar
     python main.py demo-csv
 
 El flujo completo:
-    1. Lee el CSV exportado por el ERP
-    2. Para cada albarán, llama al scraper del portal correspondiente
-    3. Genera el PDF de declaración
-    4. Fusiona declaración + PDF albarán del ERP
-    5. Guarda el resultado en output/pdfs/ y registra en BD
+    1. Lee el XLS/CSV exportado por el ERP
+    2. Extrae albaranes con líneas de envase (Europool, IFCO, CHEP)
+    3. Para cada albarán, declara en el portal correspondiente
+    4. Descarga el PDF oficial del portal (o genera uno de respaldo)
+    5. Fusiona con el PDF del albarán del ERP y lo imprime
 """
 from __future__ import annotations
 
@@ -26,10 +27,18 @@ from rich.table import Table
 
 from config.settings import settings
 from core.database import guardar_declaracion, init_db, listar_declaraciones, ya_declarado
+from core.erp_parser import albaranes_from_xls
 from core.models import DeclarationStatus, albaranes_from_csv
 from documents.declaration import generar_declaracion_pdf
 from documents.merger import fusionar_pdfs
 from scrapers.factory import get_scraper
+
+
+def _cargar_albaranes(fichero: Path) -> list:
+    """Detecta automáticamente si el fichero es XLS o CSV y lo parsea."""
+    if fichero.suffix.lower() in (".xls", ".xlsx"):
+        return albaranes_from_xls(fichero)
+    return albaranes_from_csv(fichero)
 
 app = typer.Typer(help="Declarador automático de envases IFCO / Europool / CHEP")
 console = Console()
@@ -43,16 +52,16 @@ logger.add(sys.stderr, level="INFO")
 
 @app.command()
 def declarar(
-    csv_path: Path = typer.Argument(..., help="Ruta al CSV exportado por el ERP"),
+    csv_path: Path = typer.Argument(..., help="Ruta al XLS o CSV exportado por el ERP"),
     forzar: bool = typer.Option(False, "--forzar", help="Re-declarar aunque ya esté confirmado"),
 ) -> None:
-    """Procesa un CSV de albaranes y declara los envases en el portal correspondiente."""
+    """Procesa un XLS/CSV de albaranes y declara los envases en el portal correspondiente."""
     if not csv_path.exists():
         console.print(f"[red]Archivo no encontrado: {csv_path}[/red]")
         raise typer.Exit(1)
 
     init_db()
-    albaranes = albaranes_from_csv(csv_path)
+    albaranes = _cargar_albaranes(csv_path)
     console.print(f"\n[bold]Procesando {len(albaranes)} albarán(es)...[/bold]\n")
 
     for albaran in albaranes:

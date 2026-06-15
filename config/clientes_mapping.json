@@ -1,0 +1,11 @@
+{
+  "_comentario": "Mapeo del nombre de cliente en el ERP al nombre exacto en el portal Europool/IFCO.",
+  "_instruccion": "Abre el portal Europool → Crear Movimiento → desplegable DESTINO y copia el nombre exacto.",
+  "_formato": "nombre_en_erp → nombre_exacto_en_portal",
+
+  "PAVO Y DERIVADOS S.A.(CONSUM BARCELONA)": "Consum Barcelona",
+  "PAVO Y DERIVADOS S.A.(CONSUM VALENCIA)":  "Consum Valencia",
+  "ALDI SAGUNTO":                             "Aldi Sagunto Carne",
+
+  "_instruccion2": "Añade aquí todos tus clientes con envases Europool/IFCO."
+}

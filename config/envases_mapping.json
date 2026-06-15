@@ -1,0 +1,22 @@
+{
+  "_comentario": "Mapeo de códigos de envase del ERP al portal correspondiente.",
+  "_formato": "codigo_erp → [portal, nombre_en_portal]",
+  "_portales": "europool | ifco | chep | lpr (lpr se ignora, no está implementado)",
+
+  "9211": ["europool", "156-Caja Verde"],
+  "9212": ["europool", "156-Caja Verde"],
+  "9220": ["europool", "E1-Caja Naranja"],
+  "9221": ["europool", "E2-Caja Azul"],
+
+  "_ifco_ejemplo": "Descomenta y ajusta cuando tengas los códigos IFCO",
+  "9300": ["ifco", "IFCO2310"],
+  "9301": ["ifco", "IFCO6410"],
+
+  "_chep_ejemplo": "Descomenta y ajusta cuando tengas los códigos CHEP",
+  "9400": ["chep", "EPAL"],
+  "9401": ["chep", "HALF"],
+
+  "_lpr_ignorado": "LPR no está soportado - sus líneas se omiten",
+  "9103": ["lpr", "HP080"],
+  "9104": ["lpr", "HP060"]
+}

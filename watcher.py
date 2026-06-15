@@ -25,6 +25,7 @@ from watchdog.observers import Observer
 
 from config.settings import settings
 from core.database import guardar_declaracion, init_db, ya_declarado
+from core.erp_parser import albaranes_from_xls
 from core.models import DeclarationStatus, albaranes_from_csv
 from documents.declaration import generar_declaracion_pdf
 from documents.merger import fusionar_pdfs
@@ -68,7 +69,10 @@ def procesar_csv(csv_path: Path) -> None:
     errores = []
     try:
         init_db()
-        albaranes = albaranes_from_csv(en_proceso)
+        if en_proceso.suffix.lower() in (".xls", ".xlsx"):
+            albaranes = albaranes_from_xls(en_proceso)
+        else:
+            albaranes = albaranes_from_csv(en_proceso)
         logger.info(f"  {len(albaranes)} albarán(es) encontrados en el fichero")
 
         for albaran in albaranes:
@@ -141,6 +145,8 @@ def procesar_csv(csv_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 class CsvHandler(FileSystemEventHandler):
+    _EXTENSIONES = {".csv", ".xls", ".xlsx"}
+
     def on_created(self, event: FileCreatedEvent) -> None:  # type: ignore[override]
         self._handle(Path(event.src_path))
 
@@ -148,7 +154,7 @@ class CsvHandler(FileSystemEventHandler):
         self._handle(Path(event.dest_path))
 
     def _handle(self, path: Path) -> None:
-        if path.suffix.lower() != ".csv":
+        if path.suffix.lower() not in self._EXTENSIONES:
             return
         # Esperar a que el ERP termine de escribir el fichero
         time.sleep(2)
