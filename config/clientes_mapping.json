@@ -1,11 +1,32 @@
 {
-  "_comentario": "Mapeo del nombre de cliente en el ERP al nombre exacto en el portal Europool/IFCO.",
-  "_instruccion": "Abre el portal Europool → Crear Movimiento → desplegable DESTINO y copia el nombre exacto.",
-  "_formato": "nombre_en_erp → nombre_exacto_en_portal",
+  "_comentario": "Mapeo nombre cliente en ERP → nombre exacto en el portal Europool (desplegable DESTINO).",
+  "_instruccion": "La clave es el NOMBRE tal como aparece en la columna NOMBRE del XLS del ERP.",
+  "_instruccion2": "El valor es el nombre EXACTO del desplegable DESTINO del portal Europool.",
 
-  "PAVO Y DERIVADOS S.A.(CONSUM BARCELONA)": "Consum Barcelona",
-  "PAVO Y DERIVADOS S.A.(CONSUM VALENCIA)":  "Consum Valencia",
-  "ALDI SAGUNTO":                             "Aldi Sagunto Carne",
+  "PAVO Y DERIVADOS S.A.(CONSUM BARCELONA)": "Consum Barcelona Carne.",
+  "PAVO Y DERIVADOS S.A.(CONSUM VALENCIA)":  "Consum Quart Carne.",
 
-  "_instruccion2": "Añade aquí todos tus clientes con envases Europool/IFCO."
+  "_PENDIENTE_verificar": "Confirma que CONSUM VALENCIA corresponde a 'Consum Quart Carne.' en el portal",
+
+  "_todos_los_clientes_del_portal": {
+    "Ahorramas Velilla Carne":        "→ añadir nombre ERP aquí",
+    "Aldi Dos Hermanas Carne":        "→ añadir nombre ERP aquí",
+    "Aldi Masquefa Carne.":           "→ añadir nombre ERP aquí",
+    "Aldi Miranda de Ebro Carne.":    "→ añadir nombre ERP aquí",
+    "Aldi Pinto Carne":               "→ añadir nombre ERP aquí",
+    "Aldi Plataforma Canarias Carne.":"→ añadir nombre ERP aquí",
+    "Aldi Sagunto Carne":             "→ añadir nombre ERP aquí",
+    "Aldi San Isidro Carne":          "→ añadir nombre ERP aquí",
+    "Caprabo ZAL Carne":              "→ añadir nombre ERP aquí",
+    "Caprabo ZAL Refrigerado":        "→ añadir nombre ERP aquí",
+    "Consum Barcelona Carne.":        "→ PAVO Y DERIVADOS S.A.(CONSUM BARCELONA) ✓",
+    "Consum Murcia Carne.":           "→ añadir nombre ERP aquí",
+    "Consum Quart Carne.":            "→ PAVO Y DERIVADOS S.A.(CONSUM VALENCIA) (pendiente confirmar)",
+    "ECI Mercamadrid (10269)":        "→ añadir nombre ERP aquí",
+    "Eroski Amorebieta Carne":        "→ añadir nombre ERP aquí",
+    "Eroski Jundiz Carne":            "→ añadir nombre ERP aquí",
+    "Eroski Peninsu. M50 Carne":      "→ añadir nombre ERP aquí",
+    "Eroski Peninsu. ZGZ Carne":      "→ añadir nombre ERP aquí",
+    "Vego Supermercados SAU Carnes":  "→ añadir nombre ERP aquí"
+  }
 }
