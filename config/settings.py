@@ -5,7 +5,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Carga siempre el .env desde la raíz del proyecto (junto a watcher.py)
+_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(_ROOT / ".env")
 
 
 def _bool(key: str, default: bool) -> bool:
