@@ -119,17 +119,19 @@ class EuropoolScraper(BaseScraper):
         # Campo email (si no viene pre-rellenado)
         try:
             email_field = page.locator(MS_EMAIL_INPUT)
-            if email_field.is_visible(timeout=3_000):
+            if email_field.is_visible(timeout=5_000):
                 email_field.fill(settings.europool_user)
-                page.locator(MS_NEXT_BTN).click()
-                page.wait_for_load_state("domcontentloaded")
+                page.wait_for_timeout(800)
+                email_field.press("Enter")
+                page.wait_for_load_state("networkidle")
         except Exception:
             pass
 
         # Contraseña
-        page.wait_for_selector(MS_PASSWORD_INPUT, timeout=15_000)
+        page.wait_for_selector(MS_PASSWORD_INPUT, timeout=30_000)
         page.fill(MS_PASSWORD_INPUT, settings.europool_password)
-        page.click(MS_SIGNIN_BTN)
+        page.wait_for_timeout(500)
+        page.locator(MS_PASSWORD_INPUT).press("Enter")
         page.wait_for_load_state("networkidle")
 
         # "¿Mantener sesión?" → Sí
