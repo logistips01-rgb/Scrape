@@ -102,19 +102,39 @@ class EuropoolScraper(BaseScraper):
 
         logger.info("[europool] Iniciando login Microsoft SSO...")
 
+        # El portal muestra "You need to be logged in!" con botón "Log in"
+        # Hay que hacer click en él para que redirija a Microsoft
+        try:
+            login_btn = page.locator("a:has-text('Log in'), button:has-text('Log in')")
+            if login_btn.first.is_visible(timeout=8_000):
+                logger.debug("[europool] Haciendo click en botón Log in")
+                login_btn.first.click()
+                page.wait_for_load_state("networkidle")
+        except Exception:
+            pass
+
         # Esperar redirección a Microsoft
         page.wait_for_url("**/login.microsoftonline.com/**", timeout=15_000)
         page.wait_for_load_state("domcontentloaded")
+        page.wait_for_timeout(1_000)
 
-        # Selector de cuenta (si aparece con múltiples cuentas guardadas)
+        # Selector de cuenta (aparece cuando hay múltiples cuentas guardadas)
+        # La cuenta objetivo es 0001006572-4@epswebportal.onmicrosoft.com
         try:
             tile = page.locator(
                 f"[data-test-id='{settings.europool_user}'], "
                 f"div[role='button']:has-text('{settings.europool_user}')"
             )
-            if tile.first.is_visible(timeout=3_000):
+            if tile.first.is_visible(timeout=5_000):
+                logger.debug(f"[europool] Seleccionando cuenta: {settings.europool_user}")
                 tile.first.click()
-                page.wait_for_load_state("domcontentloaded")
+                page.wait_for_load_state("networkidle")
+                page.wait_for_timeout(2_000)
+                # Si la cuenta tiene sesión activa redirige directo al portal
+                if self._ya_autenticado():
+                    self._save_session()
+                    logger.info("[europool] Login OK (cuenta con sesión activa)")
+                    return
         except Exception:
             pass
 
