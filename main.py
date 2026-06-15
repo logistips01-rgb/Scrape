@@ -67,8 +67,12 @@ def declarar(
         result = scraper.declarar(albaran)
 
         if result.status != DeclarationStatus.ERROR:
-            # Generar PDF de declaración
-            result.declaration_pdf_path = generar_declaracion_pdf(albaran, result)
+            # Usar PDF oficial del portal si fue descargado, o generar uno propio
+            if albaran.pdf_declaracion_oficial and albaran.pdf_declaracion_oficial.exists():
+                result.declaration_pdf_path = albaran.pdf_declaracion_oficial
+                console.print("  [blue]PDF oficial descargado del portal[/blue]")
+            else:
+                result.declaration_pdf_path = generar_declaracion_pdf(albaran, result)
 
             # Fusionar con albarán del ERP
             result.merged_pdf_path = fusionar_pdfs(

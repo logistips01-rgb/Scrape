@@ -82,7 +82,14 @@ def procesar_csv(csv_path: Path) -> None:
             result = scraper.declarar(albaran)
 
             if result.status != DeclarationStatus.ERROR:
-                result.declaration_pdf_path = generar_declaracion_pdf(albaran, result)
+                # Usar el PDF oficial del portal si fue descargado,
+                # o generar uno propio como fallback
+                if albaran.pdf_declaracion_oficial and albaran.pdf_declaracion_oficial.exists():
+                    result.declaration_pdf_path = albaran.pdf_declaracion_oficial
+                    logger.info("  Usando PDF oficial del portal")
+                else:
+                    result.declaration_pdf_path = generar_declaracion_pdf(albaran, result)
+
                 result.merged_pdf_path = fusionar_pdfs(
                     result.declaration_pdf_path,
                     albaran.pdf_path,

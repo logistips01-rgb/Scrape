@@ -14,6 +14,7 @@ from core.models import Albaran, DeclarationStatus, DeclaracionResult
 
 class BaseScraper(ABC):
     portal_name: str = "base"
+    _session_file: Path | None = None  # cada scraper puede definir su propia ruta
 
     def __init__(self) -> None:
         self._playwright: Playwright | None = None
@@ -31,12 +32,24 @@ class BaseScraper(ABC):
             headless=settings.headless,
             args=["--no-sandbox", "--disable-dev-shm-usage"],
         )
-        self._context = self._browser.new_context(
-            viewport={"width": 1440, "height": 900},
-            locale="es-ES",
-        )
+
+        # Reutilizar sesión guardada si existe (evita re-login)
+        session_path = self._session_file
+        ctx_kwargs: dict = {"viewport": {"width": 1440, "height": 900}, "locale": "es-ES"}
+        if session_path and session_path.exists():
+            ctx_kwargs["storage_state"] = str(session_path)
+            logger.debug(f"[{self.portal_name}] Cargando sesión guardada: {session_path}")
+
+        self._context = self._browser.new_context(**ctx_kwargs)
         self._page = self._context.new_page()
         self._page.set_default_timeout(settings.browser_timeout_ms)
+
+    def _save_session(self) -> None:
+        """Persiste cookies y localStorage para evitar re-login en la siguiente ejecución."""
+        if self._session_file and self._context:
+            self._session_file.parent.mkdir(parents=True, exist_ok=True)
+            self._context.storage_state(path=str(self._session_file))
+            logger.debug(f"[{self.portal_name}] Sesión guardada en {self._session_file}")
 
     def _stop_browser(self) -> None:
         if self._context:
@@ -76,10 +89,15 @@ class BaseScraper(ABC):
                     f"[{self.portal_name}] Intento {attempt}/{settings.retry_attempts} "
                     f"fallido para {albaran.num_albaran}: {exc}"
                 )
-                result.screenshot_path = self._screenshot(f"error_{albaran.num_albaran}_intento{attempt}")
+                result.screenshot_path = self._screenshot(
+                    f"error_{albaran.num_albaran}_intento{attempt}"
+                )
                 result.error_message = str(exc)
                 if attempt == settings.retry_attempts:
                     result.status = DeclarationStatus.ERROR
+                    # Borrar sesión corrupta para forzar re-login la próxima vez
+                    if self._session_file and self._session_file.exists():
+                        self._session_file.unlink(missing_ok=True)
                 else:
                     time.sleep(2 ** attempt)
             finally:

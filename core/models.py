@@ -39,7 +39,8 @@ class Albaran:
     cliente_nombre: str
     portal: Portal
     lineas: list[EnvaseLinea] = field(default_factory=list)
-    pdf_path: Optional[Path] = None  # PDF generado por el ERP
+    pdf_path: Optional[Path] = None              # PDF del albarán generado por el ERP
+    pdf_declaracion_oficial: Optional[Path] = None  # PDF oficial descargado del portal
 
     @property
     def total_envases(self) -> int:
