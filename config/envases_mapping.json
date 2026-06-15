@@ -1,22 +1,27 @@
 {
   "_comentario": "Mapeo de códigos de envase del ERP al portal correspondiente.",
-  "_formato": "codigo_erp → [portal, nombre_en_portal]",
+  "_formato": "codigo_erp → [portal, nombre_EXACTO_en_portal]",
   "_portales": "europool | ifco | chep | lpr (lpr se ignora, no está implementado)",
 
-  "9211": ["europool", "156-Caja Verde"],
+  "_europool_cajas_verdes": "Tipos confirmados en el desplegable TIPO DE ENVASE del portal",
+  "9211": ["europool", "216-Caja Verde"],
   "9212": ["europool", "156-Caja Verde"],
-  "9220": ["europool", "E1-Caja Naranja"],
-  "9221": ["europool", "E2-Caja Azul"],
+  "9213": ["europool", "136-Caja Verde"],
+  "9214": ["europool", "106-Caja Verde"],
+  "9215": ["europool", "154-Caja Verde"],
+  "9216": ["europool", "104-Caja Verde"],
 
-  "_ifco_ejemplo": "Descomenta y ajusta cuando tengas los códigos IFCO",
+  "_instruccion_europool": "Si tienes más códigos ERP para otros tipos de caja, añádelos aquí siguiendo el mismo patrón",
+
+  "_ifco": "Añadir cuando se implementen los albaranes IFCO",
   "9300": ["ifco", "IFCO2310"],
   "9301": ["ifco", "IFCO6410"],
 
-  "_chep_ejemplo": "Descomenta y ajusta cuando tengas los códigos CHEP",
+  "_chep": "Añadir cuando se implementen los albaranes CHEP",
   "9400": ["chep", "EPAL"],
   "9401": ["chep", "HALF"],
 
-  "_lpr_ignorado": "LPR no está soportado - sus líneas se omiten",
+  "_lpr_ignorado": "LPR no está soportado - sus líneas se omiten automáticamente",
   "9103": ["lpr", "HP080"],
   "9104": ["lpr", "HP060"]
 }
