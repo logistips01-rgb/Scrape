@@ -189,7 +189,8 @@ class EuropoolScraper(BaseScraper):
 
         page.goto(FLOWS_NEW_URL)
         page.wait_for_load_state("networkidle")
-        page.wait_for_selector("mat-select", timeout=15_000)  # esperar Angular
+        page.wait_for_timeout(2_000)  # Angular necesita tiempo extra para renderizar
+        page.wait_for_selector("mat-select", timeout=30_000)  # esperar Angular
 
         self._screenshot(f"form_inicio_{albaran.num_albaran}")
 
