@@ -190,6 +190,16 @@ class EuropoolScraper(BaseScraper):
         page.goto(FLOWS_NEW_URL)
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(2_000)  # Angular necesita tiempo extra para renderizar
+
+        # Cerrar aviso de cookies si aparece
+        try:
+            cookie_btn = page.locator("button:has-text('Got it'), button:has-text('Aceptar'), button:has-text('Accept')")
+            if cookie_btn.first.is_visible(timeout=3_000):
+                cookie_btn.first.click()
+                page.wait_for_timeout(500)
+        except Exception:
+            pass
+
         page.wait_for_selector("mat-select", timeout=30_000)  # esperar Angular
 
         self._screenshot(f"form_inicio_{albaran.num_albaran}")

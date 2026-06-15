@@ -27,14 +27,22 @@ def main() -> None:
     print()
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=False,
-            args=[
-                "--window-position=0,0",
-                "--window-size=1280,900",
-                "--foreground",
-            ],
-        )
+        # Intentar usar Edge o Chrome instalado antes que el Chromium de Playwright
+        browser = None
+        for channel in ("msedge", "chrome", None):
+            try:
+                if channel:
+                    browser = p.chromium.launch(channel=channel, headless=False)
+                else:
+                    browser = p.chromium.launch(headless=False)
+                print(f"Navegador abierto ({channel or 'chromium'}).")
+                break
+            except Exception:
+                continue
+
+        if browser is None:
+            print("ERROR: No se pudo abrir ningun navegador.")
+            return
         context = browser.new_context(
             viewport={"width": 1280, "height": 900},
         )
