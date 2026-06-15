@@ -1,21 +1,18 @@
 """
-Login manual de Europool — ejecutar UNA VEZ para guardar la sesión.
+Login manual de Europool — ejecutar UNA VEZ para guardar la sesion.
 
 Uso:
     python login_manual.py
 
-Abre Chrome, inicia sesión manualmente en el portal y pulsa ENTER.
-La sesión queda guardada y el watcher la reutilizará automáticamente
-sin volver a pedir credenciales.
+Abre Chrome, inicia sesion manualmente en el portal y pulsa ENTER.
+La sesion queda guardada y el watcher la reutilizara automaticamente.
 """
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from config.settings import settings
-
+SESSION_FILE = Path("output") / "europool_session.json"
 PORTAL_URL   = "https://webportal.europoolsystem.com"
-SESSION_FILE = settings.output_dir / "europool_session.json"
 
 
 def main() -> None:
@@ -24,39 +21,33 @@ def main() -> None:
     print("  LOGIN MANUAL - EUROPOOL")
     print("=" * 60)
     print()
-    print("Se abrira el navegador con el portal de Europool.")
-    print("Inicia sesion normalmente (con tu cuenta Microsoft).")
-    print()
-    print("Cuando estes dentro del portal (veas el dashboard),")
-    print("vuelve aqui y pulsa ENTER para guardar la sesion.")
-    print()
-    input("Pulsa ENTER para abrir el navegador...")
+    print("Abriendo el navegador...")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False, args=["--start-maximized"])
-        context = browser.new_context(
-            viewport=None,
-            locale="es-ES",
-            no_viewport=True,
-        )
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_context(viewport={"width": 1440, "height": 900})
         page = context.new_page()
+
+        print("Navegando al portal...")
         page.goto(PORTAL_URL)
 
         print()
-        print("Navegador abierto. Inicia sesion en el portal.")
-        print("Cuando estes dentro, vuelve aqui y pulsa ENTER.")
+        print("El navegador esta abierto.")
+        print("  1. Haz click en Log in")
+        print("  2. Elige la cuenta 0001006572-4@epswebportal.onmicrosoft.com")
+        print("  3. Autenticate con PIN o Windows Hello")
+        print("  4. Haz click en MY EPS si es necesario")
+        print("  5. Cuando veas el dashboard, vuelve aqui")
         print()
-        input("Pulsa ENTER para guardar la sesion y cerrar el navegador...")
+        input("Pulsa ENTER cuando estes en el dashboard del portal...")
 
         SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
         context.storage_state(path=str(SESSION_FILE))
+        print(f"Sesion guardada en: {SESSION_FILE}")
         browser.close()
 
     print()
-    print(f"Sesion guardada en: {SESSION_FILE}")
-    print()
-    print("Ya puedes arrancar el watcher con: python watcher.py")
-    print("No necesitaras volver a hacer login hasta que caduque la sesion.")
+    print("Listo! Ahora arranca el watcher con: python watcher.py")
     print()
 
 
