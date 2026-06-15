@@ -92,6 +92,8 @@ class EuropoolScraper(BaseScraper):
 
         page.goto(PORTAL_URL)
         page.wait_for_load_state("networkidle")
+        # Esperar a que Angular procese y dispare posibles redireccionamientos SSO
+        page.wait_for_timeout(3_000)
 
         # Sesión guardada válida → ya estamos en el portal
         if self._ya_autenticado():
