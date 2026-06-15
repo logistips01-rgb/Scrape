@@ -1,38 +1,46 @@
+from __future__ import annotations
+
+import os
 from pathlib import Path
-from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+def _bool(key: str, default: bool) -> bool:
+    return os.getenv(key, str(default)).lower() in ("true", "1", "yes")
 
+
+class _Settings:
     # Europool
-    europool_url: str = "https://portal.europool.com"
-    europool_user: str = ""
-    europool_password: str = ""
+    europool_url:      str  = os.getenv("EUROPOOL_URL",      "https://webportal.europoolsystem.com")
+    europool_user:     str  = os.getenv("EUROPOOL_USER",     "")
+    europool_password: str  = os.getenv("EUROPOOL_PASSWORD", "")
 
     # IFCO
-    ifco_url: str = "https://portal.ifco.com"
-    ifco_user: str = ""
-    ifco_password: str = ""
+    ifco_url:      str = os.getenv("IFCO_URL",      "https://portal.ifco.com")
+    ifco_user:     str = os.getenv("IFCO_USER",     "")
+    ifco_password: str = os.getenv("IFCO_PASSWORD", "")
 
     # CHEP
-    chep_url: str = "https://myaccount.chep.com"
-    chep_user: str = ""
-    chep_password: str = ""
+    chep_url:      str = os.getenv("CHEP_URL",      "https://myaccount.chep.com")
+    chep_user:     str = os.getenv("CHEP_USER",     "")
+    chep_password: str = os.getenv("CHEP_PASSWORD", "")
 
     # Rutas
-    input_dir: Path = Path("./input")
-    output_dir: Path = Path("./output")
-    screenshots_dir: Path = Path("./screenshots")
+    input_dir:       Path = Path(os.getenv("INPUT_DIR",       "./input"))
+    output_dir:      Path = Path(os.getenv("OUTPUT_DIR",      "./output"))
+    screenshots_dir: Path = Path(os.getenv("SCREENSHOTS_DIR", "./screenshots"))
 
-    # Comportamiento del navegador
-    headless: bool = True
-    browser_timeout_ms: int = 30_000
-    retry_attempts: int = 3
+    # Navegador
+    headless:          bool = _bool("HEADLESS", True)
+    browser_timeout_ms: int = int(os.getenv("BROWSER_TIMEOUT_MS", "30000"))
+    retry_attempts:     int = int(os.getenv("RETRY_ATTEMPTS", "3"))
 
-    # Impresión automática
-    auto_print: bool = True
-    printer_name: str = ""   # vacío = impresora predeterminada del sistema
+    # Impresión
+    auto_print:   bool = _bool("AUTO_PRINT", True)
+    printer_name: str  = os.getenv("PRINTER_NAME", "")
 
 
-settings = Settings()
+settings = _Settings()
