@@ -175,9 +175,10 @@ def main() -> None:
     logger.info("=" * 60)
 
     # Procesar ficheros que ya estuvieran esperando
-    for csv_file in DIR_PENDIENTES.glob("*.csv"):
-        logger.info(f"Fichero pendiente encontrado al arrancar: {csv_file.name}")
-        procesar_csv(csv_file)
+    for ext in ("*.csv", "*.xls", "*.xlsx"):
+        for pendiente in DIR_PENDIENTES.glob(ext):
+            logger.info(f"Fichero pendiente encontrado al arrancar: {pendiente.name}")
+            procesar_csv(pendiente)
 
     observer = Observer()
     observer.schedule(CsvHandler(), str(DIR_PENDIENTES), recursive=False)
