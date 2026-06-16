@@ -36,6 +36,7 @@ from loguru import logger
 # ---------------------------------------------------------------------------
 # URLs
 # ---------------------------------------------------------------------------
+HUB_URL    = "https://my.europoolsystem.com"
 PORTAL_URL     = "https://webportal.europoolsystem.com"
 DASHBOARD_URL  = "https://webportal.europoolsystem.com/#/dashboard"
 FLOWS_NEW_URL  = "https://webportal.europoolsystem.com/#/flows/new"
@@ -92,10 +93,18 @@ class EuropoolScraper(BaseScraper):
 
         page.goto(PORTAL_URL)
         page.wait_for_load_state("networkidle")
-        # Esperar a que Angular procese y dispare posibles redireccionamientos SSO
         page.wait_for_timeout(3_000)
 
-        # Sesión guardada válida → ya estamos en el portal
+        # Caso 1: hub "YOUR PORTALS" en my.europoolsystem.com → click MY EPS
+        if "my.europoolsystem.com" in page.url or page.locator("text=MY EPS").count() > 0:
+            logger.debug("[europool] Hub detectado, haciendo click en MY EPS")
+            page.locator("text=MY EPS").first.click()
+            page.wait_for_load_state("networkidle")
+            page.wait_for_timeout(2_000)
+            logger.info("[europool] Sesión activa (via hub MY EPS)")
+            return
+
+        # Caso 2: ya dentro del portal webportal sin necesitar login
         if self._ya_autenticado():
             logger.info("[europool] Sesión activa, sin necesidad de login")
             return
@@ -189,7 +198,7 @@ class EuropoolScraper(BaseScraper):
 
         page.goto(FLOWS_NEW_URL)
         page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(2_000)  # Angular necesita tiempo extra para renderizar
+        page.wait_for_timeout(2_000)
 
         # Cerrar aviso de cookies si aparece
         try:
@@ -200,7 +209,9 @@ class EuropoolScraper(BaseScraper):
         except Exception:
             pass
 
-        page.wait_for_selector("mat-select", timeout=30_000)  # esperar Angular
+        # Esperar a que el formulario cargue (texto ENCABEZAMIENTO siempre presente)
+        page.wait_for_selector("text=ENCABEZAMIENTO", timeout=30_000)
+        page.wait_for_timeout(1_000)
 
         self._screenshot(f"form_inicio_{albaran.num_albaran}")
 

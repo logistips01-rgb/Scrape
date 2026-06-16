@@ -120,12 +120,31 @@ def main():
         # PASO 4: intentar abrir el formulario
         print("\n[PASO 4] Intentando abrir /#/flows/new ...")
         try:
-            base_url = page.url.split("#")[0]
-            page.goto(base_url + "#/flows/new")
+            page.goto("https://webportal.europoolsystem.com/#/flows/new")
             page.wait_for_timeout(5000)
         except Exception as e:
             print(f"  Error: {e}")
         info(page, "PASO 4: formulario flows/new")
+
+        # PASO 5: inspeccionar elementos del formulario
+        print("\n[PASO 5] Inspeccionando elementos del formulario...")
+        for desc, sel in [
+            ("mat-select",              "mat-select"),
+            ("select (HTML nativo)",    "select"),
+            ("ng-select",               "ng-select"),
+            ("div[role=combobox]",      "div[role='combobox']"),
+            ("input[role=combobox]",    "input[role='combobox']"),
+            ("[class*=select]",         "[class*='select']"),
+            ("[class*=dropdown]",       "[class*='dropdown']"),
+            ("text ENCABEZAMIENTO",     "text=ENCABEZAMIENTO"),
+            ("text DESTINO",            "text=DESTINO"),
+            ("text ORIGEN",             "text=ORIGEN"),
+        ]:
+            try:
+                n = page.locator(sel).count()
+                print(f"  [{'SI' if n else 'no'}] {desc}  ({n})")
+            except Exception as e:
+                print(f"  [??] {desc}: {e}")
 
         print()
         print("=" * 60)
