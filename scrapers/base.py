@@ -40,6 +40,7 @@ class BaseScraper(ABC):
                 kwargs = dict(
                     user_data_dir=str(_EDGE_PROFILE_DIR),
                     headless=settings.headless,
+                    slow_mo=settings.browser_slow_mo,
                     args=["--no-sandbox", "--disable-dev-shm-usage"],
                     viewport={"width": 1440, "height": 900},
                     locale="es-ES",

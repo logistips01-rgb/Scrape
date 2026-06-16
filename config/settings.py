@@ -38,6 +38,7 @@ class _Settings:
     # Navegador
     headless:          bool = _bool("HEADLESS", True)
     browser_timeout_ms: int = int(os.getenv("BROWSER_TIMEOUT_MS", "30000"))
+    browser_slow_mo:    int = int(os.getenv("BROWSER_SLOW_MO", "0"))
     retry_attempts:     int = int(os.getenv("RETRY_ATTEMPTS", "3"))
 
     # Impresión
