@@ -440,25 +440,55 @@ class EuropoolScraper(BaseScraper):
         logger.debug(f"[europool] Destino seleccionado (nth 1): {cliente_nombre}")
 
     def _añadir_linea_envase(self, tipo: str, cantidad: int) -> None:
-        """Rellena TIPO DE ENVASE + CANTIDAD y pulsa '+ AÑADIR MODELO'."""
+        """
+        Rellena TIPO DE ENVASE + CANTIDAD y pulsa '+ AÑADIR MODELO'.
+        Se llama una vez por cada tipo de envase del albarán.
+        """
         page = self._page
 
-        # En sección 2, el primer ng-select visible es TIPO DE ENVASE
-        select = page.locator("ng-select").first
-        select.click()
-        page.wait_for_selector(SEL_NG_OPTION, state="visible", timeout=8_000)
+        # Buscar el ng-select de "Tipo de envase" por su label para no confundirlo
+        # con el DESTINO de la sección 1 (que puede seguir visible arriba).
+        select = None
+        try:
+            container = page.locator(
+                "mat-form-field:has(mat-label:has-text('Tipo de envase'))"
+            )
+            if container.count() > 0:
+                select = container.locator("ng-select").first
+        except Exception:
+            pass
 
-        option = page.locator(SEL_NG_OPTION).filter(has_text=tipo)
-        if option.count() == 0:
-            codigo = tipo.split("-")[0].strip()
-            option = page.locator(SEL_NG_OPTION).filter(has_text=codigo)
-        option.first.click()
+        if select is None:
+            # Fallback: último ng-select visible (el de la nueva línea, al final)
+            select = page.locator("ng-select:visible").last
+
+        select.click()
         page.wait_for_timeout(400)
 
+        # Escribir para filtrar opciones
+        try:
+            search = select.locator("input")
+            if search.count() > 0 and search.first.is_visible(timeout=1_000):
+                search.first.type(tipo[:12], delay=40)
+                page.wait_for_timeout(400)
+        except Exception:
+            pass
+
+        page.wait_for_selector(".ng-dropdown-panel:visible", timeout=8_000)
+        panel = page.locator(".ng-dropdown-panel:visible")
+        option = panel.locator(SEL_NG_OPTION).filter(has_text=tipo)
+        if option.count() == 0:
+            codigo = tipo.split("-")[0].strip()
+            option = panel.locator(SEL_NG_OPTION).filter(has_text=codigo)
+        option.first.click()
+        page.wait_for_timeout(500)
+
         self._rellenar_por_label("Cantidad", str(cantidad))
+
+        # Fijar la línea → "Añadir modelo" (el botón puede estar en mayúsculas o no)
         page.locator(BTN_AÑADIR_MODELO).click()
-        page.wait_for_timeout(600)
-        logger.debug(f"[europool] Línea añadida: {tipo} x {cantidad}")
+        page.wait_for_timeout(700)
+        logger.info(f"[europool] Línea añadida: {tipo} × {cantidad}")
 
     # Mapeo de alias: nombres exactos del portal EPS + variantes por si cambia
     _LABEL_ALIASES: dict[str, list[str]] = {
