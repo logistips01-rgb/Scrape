@@ -51,33 +51,26 @@ MS_SIGNIN_BTN     = "#idSIButton9"
 MS_KEEP_YES_BTN   = "#idSIButton9"
 
 # ---------------------------------------------------------------------------
-# Selectores del formulario Euro Pool (Angular Material)
+# Selectores del formulario Euro Pool (usa ng-select, no Angular Material)
 # ---------------------------------------------------------------------------
 
 # Sección 1 — Encabezamiento
-SEL_DESTINO_SELECT    = "mat-select"          # primer select libre (ORIGEN está pre-fijado)
-SEL_REF_DEST_INPUT    = "input"               # se localiza por label REFERENCIA DESTINATARIO
-SEL_REF_EXPED_INPUT   = "input"               # se localiza por label REFERENCIA EXPEDIDOR
+# ng-select nth(0) = ORIGEN (pre-fijado), nth(1) = DESTINO
+SEL_NG_OPTION         = ".ng-option"           # opciones del desplegable ng-select
 BTN_IR_LINEAS         = "button:has-text('IR A LAS LÍNEAS')"
 
 # Sección 2 — Líneas
-SEL_TIPO_ENVASE_SEL   = "mat-select"          # dropdown TIPO DE ENVASE (primer mat-select en sección 2)
-SEL_CANTIDAD_INPUT    = "input"               # campo CANTIDAD
 BTN_AÑADIR_MODELO     = "button:has-text('AÑADIR MODELO')"
 BTN_ACCEDER_FECHA     = "button:has-text('ACCEDER A LA FECHA')"
 
 # Sección 3 — Fecha + envío final
-SEL_FECHA_INPUT       = "input"               # FECHA DEL MOVIMIENTO
-BTN_SIGUIENTE         = "button:has-text('SIGUIENTE')"   # avanza a resumen
-BTN_ENVIAR            = "button:has-text('ENVIAR')"      # envía el formulario
+BTN_SIGUIENTE         = "button:has-text('SIGUIENTE')"
+BTN_ENVIAR            = "button:has-text('ENVIAR')"
 
-# Modal de confirmación (aparece tras ENVIAR)
-SEL_MODAL_OK          = "text=guardado correctamente"    # texto del modal verde
-SEL_TRANSACTION_NUM   = "strong"                          # N.XXXXXXXXXX en negrita
+# Modal de confirmación
+SEL_MODAL_OK          = "text=guardado correctamente"
+SEL_TRANSACTION_NUM   = "strong"
 BTN_DESCARGAR_DOC     = "button:has-text('DESCARGAR DOCUMENTO')"
-
-# Panel de opciones Angular Material (fuera del DOM del formulario)
-SEL_MAT_OPTION        = "mat-option"
 
 
 class EuropoolScraper(BaseScraper):
@@ -260,58 +253,43 @@ class EuropoolScraper(BaseScraper):
     # Helpers del formulario
     # ------------------------------------------------------------------
 
-    def _seleccionar_destino(self, cliente_nombre: str) -> None:
-        """
-        Abre el dropdown DESTINO y selecciona el cliente por nombre.
-        ORIGEN está pre-fijado con nuestra empresa → DESTINO es el segundo mat-select.
-        """
+    def _seleccionar_ng_select(self, nth: int, valor: str) -> None:
+        """Abre el ng-select en posición nth y selecciona la opción por texto."""
         page = self._page
-        selects = page.locator("mat-select")
-        # ORIGEN es el primero (disabled/pre-filled). DESTINO es el segundo.
-        destino_select = selects.nth(1)
-        destino_select.click()
-        page.wait_for_selector(SEL_MAT_OPTION, state="visible", timeout=8_000)
+        select = page.locator("ng-select").nth(nth)
+        select.click()
+        page.wait_for_selector(SEL_NG_OPTION, state="visible", timeout=8_000)
 
-        # Buscar la opción que contenga el nombre del cliente
-        option = page.locator(SEL_MAT_OPTION).filter(has_text=cliente_nombre)
+        option = page.locator(SEL_NG_OPTION).filter(has_text=valor)
         if option.count() == 0:
-            # Intento de búsqueda parcial por las primeras palabras
-            primer_token = cliente_nombre.split()[0]
-            option = page.locator(SEL_MAT_OPTION).filter(has_text=primer_token)
+            # Búsqueda parcial por primer token
+            option = page.locator(SEL_NG_OPTION).filter(has_text=valor.split()[0])
 
         option.first.click()
         page.wait_for_timeout(400)
+
+    def _seleccionar_destino(self, cliente_nombre: str) -> None:
+        """ORIGEN = ng-select nth(0) pre-fijado. DESTINO = ng-select nth(1)."""
+        self._seleccionar_ng_select(1, cliente_nombre)
         logger.debug(f"[europool] DESTINO seleccionado: {cliente_nombre}")
 
     def _añadir_linea_envase(self, tipo: str, cantidad: int) -> None:
-        """
-        Rellena TIPO DE ENVASE + CANTIDAD y pulsa '+ AÑADIR MODELO'.
-        En la sección 2 el primer mat-select visible es el TIPO DE ENVASE.
-        """
+        """Rellena TIPO DE ENVASE + CANTIDAD y pulsa '+ AÑADIR MODELO'."""
         page = self._page
 
-        # TIPO DE ENVASE — dropdown
-        tipo_select = page.locator("mat-select").filter(
-            has=page.locator("mat-label:has-text('TIPO DE ENVASE'), mat-label:has-text('Tipo de envase')")
-        ).first
-        # Fallback: primer mat-select visible en la sección de líneas
-        if not tipo_select.is_visible(timeout=2_000):
-            tipo_select = page.locator("mat-select").first
+        # En sección 2, el primer ng-select visible es TIPO DE ENVASE
+        select = page.locator("ng-select").first
+        select.click()
+        page.wait_for_selector(SEL_NG_OPTION, state="visible", timeout=8_000)
 
-        tipo_select.click()
-        page.wait_for_selector(SEL_MAT_OPTION, state="visible", timeout=8_000)
-        option = page.locator(SEL_MAT_OPTION).filter(has_text=tipo)
+        option = page.locator(SEL_NG_OPTION).filter(has_text=tipo)
         if option.count() == 0:
-            # Búsqueda por código (parte antes del guión, p.ej. "156" de "156-Caja Verde")
             codigo = tipo.split("-")[0].strip()
-            option = page.locator(SEL_MAT_OPTION).filter(has_text=codigo)
+            option = page.locator(SEL_NG_OPTION).filter(has_text=codigo)
         option.first.click()
         page.wait_for_timeout(400)
 
-        # CANTIDAD — input asociado a la label "CANTIDAD"
         self._rellenar_por_label("CANTIDAD", str(cantidad))
-
-        # Añadir la línea
         page.locator(BTN_AÑADIR_MODELO).click()
         page.wait_for_timeout(600)
         logger.debug(f"[europool] Línea añadida: {tipo} x {cantidad}")
