@@ -21,7 +21,8 @@ class _Settings:
     europool_password: str  = os.getenv("EUROPOOL_PASSWORD", "")
 
     # IFCO
-    ifco_url:      str = os.getenv("IFCO_URL",      "https://portal.ifco.com")
+    ifco_url:      str = os.getenv("IFCO_URL",      "https://www.ifco-online.com")
+    ifco_number:   str = os.getenv("IFCO_NUMBER",   "")   # IFCO-N° (ej: 612029)
     ifco_user:     str = os.getenv("IFCO_USER",     "")
     ifco_password: str = os.getenv("IFCO_PASSWORD", "")
 
