@@ -251,16 +251,16 @@ def main():
 
         # Intentar automáticamente (MY EPS navega en la misma pestaña)
         try:
+            # Esperar a que Angular renderice los tiles (puede tardar)
             tile = page.locator("text=MY EPS").first
-            if tile.is_visible(timeout=5_000):
-                tile.click()
-                page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=15_000)
-                page.wait_for_load_state("domcontentloaded")
-                page.wait_for_timeout(2_000)
-                log(f"  Click automático OK. URL: {page.url}")
-                portal_page = page
-            else:
-                log("  Tile MY EPS no visible.")
+            tile.wait_for(state="visible", timeout=10_000)
+            tile.scroll_into_view_if_needed()
+            tile.click()
+            page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=20_000)
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(2_000)
+            log(f"  Click automático OK. URL: {page.url}")
+            portal_page = page
         except Exception as e:
             log(f"  Click automático falló: {e}")
 

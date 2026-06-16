@@ -94,7 +94,8 @@ class EuropoolScraper(BaseScraper):
             logger.debug("[europool] Hub detectado, haciendo click en MY EPS")
             try:
                 tile = page.locator("text=MY EPS").first
-                tile.wait_for(state="visible", timeout=10_000)
+                tile.wait_for(state="visible", timeout=15_000)
+                tile.scroll_into_view_if_needed()
                 tile.click()
                 page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=20_000)
                 page.wait_for_load_state("domcontentloaded")
