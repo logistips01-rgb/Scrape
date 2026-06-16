@@ -84,108 +84,58 @@ class EuropoolScraper(BaseScraper):
     def _login(self) -> None:
         page = self._page
 
-        page.goto(PORTAL_URL)
+        # Ir al hub directamente — goto al webportal redirige aquí de todas formas
+        page.goto(HUB_URL)
         page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(3_000)
 
-        # Caso 1: hub "YOUR PORTALS" en my.europoolsystem.com
-        # MY EPS navega en la MISMA pestaña al webportal (confirmado por diagnóstico)
-        if "my.europoolsystem.com" in page.url or page.locator("text=MY EPS").count() > 0:
-            logger.debug("[europool] Hub detectado, haciendo click en MY EPS")
-            try:
-                tile = page.locator("text=MY EPS").first
-                tile.wait_for(state="visible", timeout=15_000)
-                tile.scroll_into_view_if_needed()
-                tile.click()
-                page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=20_000)
-                page.wait_for_load_state("domcontentloaded")
-                page.wait_for_timeout(2_000)
-                logger.info(f"[europool] Webportal cargado: {page.url}")
-                return
-            except Exception as exc:
-                logger.warning(f"[europool] Error al navegar via MY EPS: {exc}")
-                if "webportal.europoolsystem.com" not in page.url:
-                    raise RuntimeError(f"No se pudo acceder al webportal via MY EPS: {exc}")
+        # ── Click en MY EPS (misma pestaña, confirmado por diagnóstico) ──────
+        logger.debug("[europool] Haciendo click en MY EPS...")
+        try:
+            tile = page.locator("text=MY EPS").first
+            tile.wait_for(timeout=15_000)          # esperar presencia en DOM (no visibilidad)
+            tile.scroll_into_view_if_needed()
+            tile.click(force=True)                 # force=True bypasses visibility checks
+            page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=20_000)
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(2_000)
+            logger.info(f"[europool] MY EPS OK, URL: {page.url}")
+        except Exception as exc:
+            logger.warning(f"[europool] Error al navegar via MY EPS: {exc}")
+            if "webportal.europoolsystem.com" not in page.url:
+                raise RuntimeError(f"No se pudo acceder al webportal via MY EPS: {exc}")
 
-        # Caso 2: ya dentro del portal webportal sin necesitar login
-        if self._ya_autenticado():
-            logger.info("[europool] Sesión activa, sin necesidad de login")
-            return
-
-        logger.info("[europool] Iniciando login Microsoft SSO...")
-
-        # El portal muestra "You need to be logged in!" con botón "Log in"
-        # Hay que hacer click en él para que redirija a Microsoft
+        # ── Sesión webportal expirada → "Log in" → selector de cuenta ────────
+        # Cuando la sesión del webportal caduca aparece "You need to be logged in!"
+        # con un botón "Log in". Al pulsarlo aparece el selector de cuentas Microsoft
+        # sin pedir PIN (el token de Azure AD sigue vigente).
         try:
             login_btn = page.locator("a:has-text('Log in'), button:has-text('Log in')")
-            if login_btn.first.is_visible(timeout=8_000):
-                logger.debug("[europool] Haciendo click en botón Log in")
+            if login_btn.first.is_visible(timeout=5_000):
+                logger.info("[europool] Sesión webportal expirada, haciendo click en 'Log in'...")
                 login_btn.first.click()
                 page.wait_for_load_state("domcontentloaded")
-        except Exception:
-            pass
-
-        # Esperar redirección a Microsoft
-        page.wait_for_url("**/login.microsoftonline.com/**", timeout=15_000)
-        page.wait_for_load_state("domcontentloaded")
-        page.wait_for_timeout(1_000)
-
-        # Selector de cuenta (aparece cuando hay múltiples cuentas guardadas)
-        # La cuenta objetivo es 0001006572-4@epswebportal.onmicrosoft.com
-        try:
-            tile = page.locator(
-                f"[data-test-id='{settings.europool_user}'], "
-                f"div[role='button']:has-text('{settings.europool_user}')"
-            )
-            if tile.first.is_visible(timeout=5_000):
-                logger.debug(f"[europool] Seleccionando cuenta: {settings.europool_user}")
-                tile.first.click()
-                page.wait_for_load_state("domcontentloaded")
                 page.wait_for_timeout(2_000)
-                # Si la cuenta tiene sesión activa redirige directo al portal
-                if self._ya_autenticado():
-                    self._save_session()
-                    logger.info("[europool] Login OK (cuenta con sesión activa)")
-                    return
-        except Exception:
-            pass
 
-        # Campo email (si no viene pre-rellenado)
-        try:
-            email_field = page.locator(MS_EMAIL_INPUT)
-            if email_field.is_visible(timeout=5_000):
-                email_field.fill(settings.europool_user)
-                page.wait_for_timeout(800)
-                email_field.press("Enter")
-                page.wait_for_load_state("domcontentloaded")
-        except Exception:
-            pass
-
-        # Contraseña
-        page.wait_for_selector(MS_PASSWORD_INPUT, timeout=30_000)
-        page.fill(MS_PASSWORD_INPUT, settings.europool_password)
-        page.wait_for_timeout(500)
-        page.locator(MS_PASSWORD_INPUT).press("Enter")
-        page.wait_for_load_state("domcontentloaded")
-
-        # "¿Mantener sesión?" → Sí
-        try:
-            if page.locator(MS_KEEP_YES_BTN).is_visible(timeout=5_000):
-                page.click(MS_KEEP_YES_BTN)
-                page.wait_for_load_state("domcontentloaded")
-        except Exception:
-            pass
-
-        page.wait_for_load_state("domcontentloaded")
+                # Selector de cuenta Microsoft (aparece sin pedir PIN cuando el token sigue válido)
+                account = page.locator(
+                    f"[data-test-id='{settings.europool_user}'], "
+                    f"div[role='button']:has-text('{settings.europool_user}')"
+                )
+                if account.first.is_visible(timeout=8_000):
+                    logger.info(f"[europool] Seleccionando cuenta: {settings.europool_user}")
+                    account.first.click()
+                    page.wait_for_load_state("domcontentloaded")
+                    page.wait_for_timeout(3_000)
+        except Exception as exc:
+            logger.debug(f"[europool] 'Log in' no detectado o ya autenticado: {exc}")
 
         if not self._ya_autenticado():
             self._screenshot("login_fallido")
             raise RuntimeError(
-                "Login en Euro Pool System fallido. Verifica EUROPOOL_USER y "
-                "EUROPOOL_PASSWORD en el fichero .env"
+                "Login en Euro Pool System fallido. Verifica EUROPOOL_USER en el fichero .env"
             )
 
-        self._save_session()
         logger.info("[europool] Login OK")
 
     def _ya_autenticado(self) -> bool:

@@ -23,9 +23,10 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 # ── Configuración ──────────────────────────────────────────────────────────
-HUB_URL       = "https://my.europoolsystem.com"
-PORTAL_URL    = "https://webportal.europoolsystem.com"
-FLOWS_NEW_URL = "https://webportal.europoolsystem.com/#/flows/new"
+HUB_URL        = "https://my.europoolsystem.com"
+PORTAL_URL     = "https://webportal.europoolsystem.com"
+FLOWS_NEW_URL  = "https://webportal.europoolsystem.com/#/flows/new"
+EUROPOOL_USER  = "0001006572-4@epswebportal.onmicrosoft.com"
 
 _ROOT        = Path(__file__).resolve().parent
 PROFILE_DIR  = _ROOT / "output" / "edge_profile"
@@ -249,13 +250,12 @@ def main():
         log("\n[PASO 3] Haciendo click en MY EPS...")
         portal_page = None
 
-        # Intentar automáticamente (MY EPS navega en la misma pestaña)
+        # Intentar automáticamente con force=True (bypassa checks de visibilidad)
         try:
-            # Esperar a que Angular renderice los tiles (puede tardar)
             tile = page.locator("text=MY EPS").first
-            tile.wait_for(state="visible", timeout=10_000)
+            tile.wait_for(timeout=10_000)          # solo esperar presencia en DOM
             tile.scroll_into_view_if_needed()
-            tile.click()
+            tile.click(force=True)                 # force=True bypassa checks de visibilidad
             page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=20_000)
             page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(2_000)
@@ -284,6 +284,40 @@ def main():
                 portal_page = page
 
         guardar(portal_page, "paso3_webportal", OUT_DIR)
+
+        # ── PASO 3.5: manejar expiración de sesión webportal ─────────
+        # Cuando la sesión del webportal caduca aparece "You need to be logged in!"
+        # con botón "Log in". Pulsarlo muestra selector de cuentas sin pedir PIN.
+        if "webportal.europoolsystem.com" in portal_page.url:
+            try:
+                login_btn = portal_page.locator("a:has-text('Log in'), button:has-text('Log in')")
+                if login_btn.first.is_visible(timeout=5_000):
+                    log("\n[PASO 3.5] Sesión webportal expirada. Haciendo click en 'Log in'...")
+                    login_btn.first.click()
+                    portal_page.wait_for_load_state("domcontentloaded")
+                    portal_page.wait_for_timeout(2_000)
+                    log(f"  URL tras Log in: {portal_page.url}")
+                    guardar(portal_page, "paso35_tras_login_btn", OUT_DIR)
+
+                    # Selector de cuenta Microsoft (no necesita PIN si el token sigue vigente)
+                    account = portal_page.locator(
+                        f"[data-test-id='{EUROPOOL_USER}'], "
+                        f"div[role='button']:has-text('{EUROPOOL_USER}')"
+                    )
+                    if account.first.is_visible(timeout=8_000):
+                        log(f"  Seleccionando cuenta: {EUROPOOL_USER}")
+                        account.first.click()
+                        portal_page.wait_for_load_state("domcontentloaded")
+                        portal_page.wait_for_timeout(3_000)
+                        log(f"  URL tras selección de cuenta: {portal_page.url}")
+                        guardar(portal_page, "paso35_tras_cuenta", OUT_DIR)
+                    else:
+                        log("  Selector de cuenta no encontrado (puede que haya pedido PIN).")
+                        guardar(portal_page, "paso35_sin_cuenta", OUT_DIR)
+                        input("\n  Autentícate manualmente y pulsa ENTER cuando el webportal cargue...")
+                        portal_page.wait_for_timeout(2_000)
+            except Exception as e:
+                log(f"  Gestión de 'Log in' no necesaria o falló: {e}")
 
         # ── PASO 4: formulario flows/new ─────────────────────────────
         log("\n[PASO 4] Navegando al formulario flows/new...")
