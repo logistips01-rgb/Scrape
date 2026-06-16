@@ -314,12 +314,27 @@ class EuropoolScraper(BaseScraper):
 
         self._screenshot(f"form_inicio_{albaran.num_albaran}")
 
+        # Diagnóstico: registrar los labels exactos del formulario para ajuste futuro
+        try:
+            labels = [l.strip() for l in page.locator("mat-label").all_text_contents() if l.strip()]
+            logger.info(f"[europool] Labels del formulario: {labels}")
+        except Exception:
+            pass
+
         # ── Sección 1: ENCABEZAMIENTO ────────────────────────────────
         self._seleccionar_destino(albaran.cliente_nombre)
+        page.wait_for_timeout(1_000)  # Angular actualiza validación tras cambio
         self._rellenar_por_label("REFERENCIA DESTINATARIO", albaran.num_pedido)
         self._rellenar_por_label("REFERENCIA EXPEDIDOR",    albaran.num_albaran)
 
         self._screenshot(f"encabezamiento_{albaran.num_albaran}")
+
+        # Esperar a que el botón se habilite (máx 5 s) antes de hacer click
+        try:
+            page.locator(BTN_IR_LINEAS).wait_for(state="enabled", timeout=5_000)
+        except Exception:
+            pass
+
         page.click(BTN_IR_LINEAS)
         page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(800)  # Angular re-render
@@ -364,15 +379,31 @@ class EuropoolScraper(BaseScraper):
         page = self._page
         select = page.locator("ng-select").nth(nth)
         select.click()
-        page.wait_for_selector(SEL_NG_OPTION, state="visible", timeout=8_000)
+        page.wait_for_timeout(400)
 
-        option = page.locator(SEL_NG_OPTION).filter(has_text=valor)
+        # Escribir para filtrar opciones (más fiable que desplazarse por toda la lista)
+        try:
+            search_input = select.locator("input")
+            if search_input.count() > 0 and search_input.first.is_visible(timeout=1_000):
+                search_input.first.type(valor[:15], delay=40)
+                page.wait_for_timeout(400)
+        except Exception:
+            pass
+
+        # Esperar al panel desplegable visible
+        page.wait_for_selector(".ng-dropdown-panel:visible", timeout=8_000)
+
+        # Buscar opción en el panel abierto (no en toda la página)
+        panel = page.locator(".ng-dropdown-panel:visible")
+        option = panel.locator(SEL_NG_OPTION).filter(has_text=valor)
         if option.count() == 0:
-            # Búsqueda parcial por primer token
-            option = page.locator(SEL_NG_OPTION).filter(has_text=valor.split()[0])
+            option = panel.locator(SEL_NG_OPTION).filter(has_text=valor.split()[0])
+        if option.count() == 0:
+            # Fallback: primera opción visible del panel
+            option = panel.locator(SEL_NG_OPTION)
 
         option.first.click()
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(600)
 
     def _seleccionar_destino(self, cliente_nombre: str) -> None:
         """ORIGEN = ng-select nth(0) pre-fijado. DESTINO = ng-select nth(1)."""
@@ -400,48 +431,65 @@ class EuropoolScraper(BaseScraper):
         page.wait_for_timeout(600)
         logger.debug(f"[europool] Línea añadida: {tipo} x {cantidad}")
 
+    # Mapeo de alias: nombres alternativos para los campos del formulario EPS
+    _LABEL_ALIASES: dict[str, list[str]] = {
+        "REFERENCIA DESTINATARIO": [
+            "REFERENCIA DESTINATARIO", "REF. DEST.", "REF DEST",
+            "REFERENCIA DEST", "Referencia destinatario",
+        ],
+        "REFERENCIA EXPEDIDOR": [
+            "REFERENCIA EXPEDIDOR", "REF. EXPED.", "REF EXPED",
+            "REFERENCIA EXPED", "Referencia expedidor",
+        ],
+        "CANTIDAD": ["CANTIDAD", "Cantidad", "UNITS", "QTY"],
+        "FECHA DEL MOVIMIENTO": [
+            "FECHA DEL MOVIMIENTO", "FECHA MOVIMIENTO", "FECHA",
+            "Fecha del movimiento",
+        ],
+    }
+
     def _rellenar_por_label(self, label_text: str, value: str) -> None:
         """
         Localiza el input asociado a una etiqueta de texto y lo rellena.
-        Funciona con Angular Material mat-form-field / mat-label.
+        Prueba múltiples alias y estrategias de búsqueda.
         """
         page = self._page
-        try:
-            # Estrategia 1: getByLabel (funciona si el label está correctamente vinculado)
-            field = page.get_by_label(label_text, exact=False)
-            if field.first.is_visible(timeout=2_000):
-                field.first.triple_click()
-                field.first.fill(value)
-                return
-        except Exception:
-            pass
+        candidates = self._LABEL_ALIASES.get(label_text, [label_text])
 
-        try:
-            # Estrategia 2: mat-form-field que contiene mat-label con ese texto
-            container = page.locator(
-                f"mat-form-field:has(mat-label:has-text('{label_text}'))"
-            )
-            inp = container.locator("input").first
-            if inp.is_visible(timeout=2_000):
-                inp.triple_click()
-                inp.fill(value)
-                return
-        except Exception:
-            pass
+        for candidate in candidates:
+            # Estrategia 1: getByLabel
+            try:
+                field = page.get_by_label(candidate, exact=False)
+                if field.first.is_visible(timeout=1_000):
+                    field.first.triple_click()
+                    field.first.fill(value)
+                    logger.debug(f"[europool] Campo '{candidate}' rellenado (getByLabel)")
+                    return
+            except Exception:
+                pass
 
-        try:
-            # Estrategia 3: buscar el primer token de la label (más tolerante a variaciones)
-            first_word = label_text.split()[0]
-            container = page.locator(
-                f"mat-form-field:has(mat-label:has-text('{first_word}'))"
-            ).filter(has_text=label_text.split()[-1])
-            inp = container.locator("input").first
-            if inp.is_visible(timeout=1_500):
-                inp.triple_click()
-                inp.fill(value)
-                return
-        except Exception:
-            pass
+            # Estrategia 2: mat-form-field con mat-label
+            try:
+                container = page.locator(f"mat-form-field:has(mat-label:has-text('{candidate}'))")
+                inp = container.locator("input").first
+                if inp.is_visible(timeout=1_000):
+                    inp.triple_click()
+                    inp.fill(value)
+                    logger.debug(f"[europool] Campo '{candidate}' rellenado (mat-label)")
+                    return
+            except Exception:
+                pass
+
+            # Estrategia 3: placeholder
+            try:
+                inp = page.get_by_placeholder(candidate, exact=False)
+                if inp.first.is_visible(timeout=1_000):
+                    inp.first.triple_click()
+                    inp.first.fill(value)
+                    logger.debug(f"[europool] Campo '{candidate}' rellenado (placeholder)")
+                    return
+            except Exception:
+                pass
 
         logger.warning(f"[europool] No se encontró el campo '{label_text}'")
 

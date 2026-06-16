@@ -76,7 +76,9 @@ class BaseScraper(ABC):
 
     def _screenshot(self, name: str) -> Path:
         settings.screenshots_dir.mkdir(parents=True, exist_ok=True)
-        path = settings.screenshots_dir / f"{self.portal_name}_{name}_{int(time.time())}.png"
+        # Sanitize: num_albaran may contain '/' which breaks Windows paths
+        safe_name = name.replace("/", "_").replace("\\", "_").replace(":", "_")
+        path = settings.screenshots_dir / f"{self.portal_name}_{safe_name}_{int(time.time())}.png"
         if self._page:
             try:
                 self._page.screenshot(path=str(path), full_page=True)
