@@ -245,32 +245,43 @@ def main():
 
         perfil_info("TRAS LOGIN")
 
-        # ── PASO 3: MY EPS → nueva pestaña (MANUAL) ─────────────────
-        log("")
-        log("*" * 60)
-        log("  PASO 3 — ACCION MANUAL:")
-        log("  En el navegador, haz CLICK en el tile 'MY EPS'")
-        log("  Se abrirá una nueva ventana/pestaña con el webportal")
-        log("  Espera a que cargue (verás PEDIDOS / MOVIMIENTOS)")
-        log("*" * 60)
-        input("\n  Pulsa ENTER cuando el webportal haya cargado...")
-        page.wait_for_timeout(2_000)
-
-        log(f"\n  Pestañas tras click en MY EPS: {len(context.pages)}")
-        listar_pestanas(context)
-
-        # Buscar la pestaña del webportal
+        # ── PASO 3: MY EPS → webportal (misma pestaña, confirmado) ──
+        log("\n[PASO 3] Haciendo click en MY EPS...")
         portal_page = None
-        for pg in context.pages:
-            if "webportal.europoolsystem.com" in pg.url:
-                portal_page = pg
-                log(f"\n  Webportal encontrado: {pg.url}")
-                break
 
-        if portal_page is None:
-            log("\n  No se encontró pestaña de webportal.")
-            log("  Usando la página actual...")
-            portal_page = page
+        # Intentar automáticamente (MY EPS navega en la misma pestaña)
+        try:
+            tile = page.locator("text=MY EPS").first
+            if tile.is_visible(timeout=5_000):
+                tile.click()
+                page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=15_000)
+                page.wait_for_load_state("networkidle")
+                page.wait_for_timeout(2_000)
+                log(f"  Click automático OK. URL: {page.url}")
+                portal_page = page
+            else:
+                log("  Tile MY EPS no visible.")
+        except Exception as e:
+            log(f"  Click automático falló: {e}")
+
+        # Fallback manual
+        if portal_page is None or "webportal.europoolsystem.com" not in portal_page.url:
+            log("")
+            log("*" * 60)
+            log("  PASO 3 — ACCION MANUAL:")
+            log("  En el navegador, haz CLICK en el tile 'MY EPS'")
+            log("  Espera a que cargue (verás PEDIDOS / MOVIMIENTOS)")
+            log("*" * 60)
+            input("\n  Pulsa ENTER cuando el webportal haya cargado...")
+            page.wait_for_timeout(2_000)
+            log(f"\n  Pestañas abiertas: {len(context.pages)}")
+            listar_pestanas(context)
+            for pg in context.pages:
+                if "webportal.europoolsystem.com" in pg.url:
+                    portal_page = pg
+                    break
+            if portal_page is None:
+                portal_page = page
 
         guardar(portal_page, "paso3_webportal", OUT_DIR)
 
