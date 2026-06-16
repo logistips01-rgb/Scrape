@@ -105,38 +105,51 @@ class EuropoolScraper(BaseScraper):
             if "webportal.europoolsystem.com" not in page.url:
                 raise RuntimeError(f"No se pudo acceder al webportal via MY EPS: {exc}")
 
-        # ── Página de login del webportal → dos casos posibles ──────────────
-        # Caso A: #/login?token=JWT — Angular procesa el token y navega a #/dashboard
-        # Caso B: sin token — redirige a Microsoft → selector de cuentas (sin PIN)
+        # ── Página de login → hay dos botones "Log in": nav bar (inútil) y contenido ──
+        # Usar JS para encontrar el del contenido principal (no en nav/header)
+        # que redirige a Microsoft con login_hint ya prefijado.
         try:
             login_btn = page.locator("a:has-text('Log in'), button:has-text('Log in')")
-            if login_btn.first.is_visible(timeout=5_000):
-                logger.info("[europool] Página de login detectada, haciendo click...")
-                login_btn.first.click()
-                page.wait_for_timeout(1_000)
+            if login_btn.count() > 0 and login_btn.first.is_visible(timeout=5_000):
+                logger.info("[europool] Página de login detectada, haciendo click en botón principal...")
+                page.evaluate("""() => {
+                    const all = Array.from(document.querySelectorAll('a, button'))
+                        .filter(el =>
+                            el.textContent.trim() === 'Log in' &&
+                            el.offsetParent !== null
+                        );
+                    const main = all.find(el => !el.closest('nav, header, [role="navigation"]'));
+                    (main || all[all.length - 1]).click();
+                }""")
 
-                # Esperar que Angular navegue fuera de #/login (Caso A: SPA routing)
+                # Esperar redirección a Microsoft
                 try:
-                    page.wait_for_function(
-                        "() => !window.location.hash.startsWith('#/login')",
-                        timeout=20_000
-                    )
-                except Exception:
-                    page.wait_for_timeout(2_000)
+                    page.wait_for_url("**/login.microsoftonline.com/**", timeout=15_000)
+                    page.wait_for_load_state("domcontentloaded")
+                    page.wait_for_timeout(1_000)
+                    logger.info(f"[europool] Microsoft cargado: {page.url}")
 
-                logger.debug(f"[europool] URL tras espera login: {page.url}")
-
-                # Caso B: si redirigió a Microsoft → selector de cuentas
-                if "microsoftonline.com" in page.url:
-                    account = page.locator(
-                        f"[data-test-id='{settings.europool_user}'], "
-                        f"div[role='button']:has-text('{settings.europool_user}')"
-                    )
-                    if account.first.is_visible(timeout=8_000):
-                        logger.info(f"[europool] Seleccionando cuenta: {settings.europool_user}")
-                        account.first.click()
-                        page.wait_for_load_state("domcontentloaded")
-                        page.wait_for_timeout(3_000)
+                    # Seleccionar cuenta — múltiples fallbacks
+                    for sel in [
+                        f"[aria-label*='0001006572']",
+                        f"[aria-label*='{settings.europool_user}']",
+                        f"div[role='option']:has-text('0001006572')",
+                        "div[role='option']:visible",
+                        "div.account-button:visible",
+                        "[tabindex='0'][role='option']:visible",
+                    ]:
+                        try:
+                            el = page.locator(sel).first
+                            if el.is_visible(timeout=3_000):
+                                logger.info(f"[europool] Cuenta encontrada ({sel}), seleccionando...")
+                                el.click()
+                                page.wait_for_load_state("domcontentloaded")
+                                page.wait_for_timeout(3_000)
+                                break
+                        except Exception:
+                            continue
+                except Exception as exc:
+                    logger.warning(f"[europool] No redirigió a Microsoft: {exc}")
         except Exception as exc:
             logger.debug(f"[europool] 'Log in' no detectado o ya autenticado: {exc}")
 
