@@ -324,8 +324,8 @@ class EuropoolScraper(BaseScraper):
         # ── Sección 1: ENCABEZAMIENTO ────────────────────────────────
         self._seleccionar_destino(albaran.cliente_nombre)
         page.wait_for_timeout(1_000)  # Angular actualiza validación tras cambio
-        self._rellenar_por_label("REFERENCIA DESTINATARIO", albaran.num_pedido)
-        self._rellenar_por_label("REFERENCIA EXPEDIDOR",    albaran.num_albaran)
+        self._rellenar_por_label("Referencia destinatario", albaran.num_pedido)
+        self._rellenar_por_label("Referencia expedidor",    albaran.num_albaran)
 
         self._screenshot(f"encabezamiento_{albaran.num_albaran}")
 
@@ -406,9 +406,38 @@ class EuropoolScraper(BaseScraper):
         page.wait_for_timeout(600)
 
     def _seleccionar_destino(self, cliente_nombre: str) -> None:
-        """ORIGEN = ng-select nth(0) pre-fijado. DESTINO = ng-select nth(1)."""
+        """Selecciona el cliente en el campo 'Destino' del formulario."""
+        page = self._page
+        # Intentar por contexto de label (más robusto que por índice)
+        try:
+            container = page.locator(
+                "mat-form-field:has(mat-label:has-text('Destino'))"
+            )
+            if container.count() > 0:
+                select = container.locator("ng-select").first
+                select.click()
+                page.wait_for_timeout(400)
+                try:
+                    search_input = select.locator("input")
+                    if search_input.count() > 0 and search_input.first.is_visible(timeout=1_000):
+                        search_input.first.type(cliente_nombre[:15], delay=40)
+                        page.wait_for_timeout(400)
+                except Exception:
+                    pass
+                page.wait_for_selector(".ng-dropdown-panel:visible", timeout=8_000)
+                panel = page.locator(".ng-dropdown-panel:visible")
+                option = panel.locator(SEL_NG_OPTION).filter(has_text=cliente_nombre)
+                if option.count() == 0:
+                    option = panel.locator(SEL_NG_OPTION).filter(has_text=cliente_nombre.split()[0])
+                option.first.click()
+                page.wait_for_timeout(600)
+                logger.debug(f"[europool] Destino seleccionado (por label): {cliente_nombre}")
+                return
+        except Exception as exc:
+            logger.debug(f"[europool] Destino por label falló, usando nth(1): {exc}")
+        # Fallback: posición nth(1)
         self._seleccionar_ng_select(1, cliente_nombre)
-        logger.debug(f"[europool] DESTINO seleccionado: {cliente_nombre}")
+        logger.debug(f"[europool] Destino seleccionado (nth 1): {cliente_nombre}")
 
     def _añadir_linea_envase(self, tipo: str, cantidad: int) -> None:
         """Rellena TIPO DE ENVASE + CANTIDAD y pulsa '+ AÑADIR MODELO'."""
@@ -426,25 +455,25 @@ class EuropoolScraper(BaseScraper):
         option.first.click()
         page.wait_for_timeout(400)
 
-        self._rellenar_por_label("CANTIDAD", str(cantidad))
+        self._rellenar_por_label("Cantidad", str(cantidad))
         page.locator(BTN_AÑADIR_MODELO).click()
         page.wait_for_timeout(600)
         logger.debug(f"[europool] Línea añadida: {tipo} x {cantidad}")
 
-    # Mapeo de alias: nombres alternativos para los campos del formulario EPS
+    # Mapeo de alias: nombres exactos del portal EPS + variantes por si cambia
     _LABEL_ALIASES: dict[str, list[str]] = {
-        "REFERENCIA DESTINATARIO": [
-            "REFERENCIA DESTINATARIO", "REF. DEST.", "REF DEST",
-            "REFERENCIA DEST", "Referencia destinatario",
+        "Referencia destinatario": [
+            "Referencia destinatario", "REFERENCIA DESTINATARIO",
+            "REF. DEST.", "REF DEST", "REFERENCIA DEST",
         ],
-        "REFERENCIA EXPEDIDOR": [
-            "REFERENCIA EXPEDIDOR", "REF. EXPED.", "REF EXPED",
-            "REFERENCIA EXPED", "Referencia expedidor",
+        "Referencia expedidor": [
+            "Referencia expedidor", "REFERENCIA EXPEDIDOR",
+            "REF. EXPED.", "REF EXPED", "REFERENCIA EXPED",
         ],
-        "CANTIDAD": ["CANTIDAD", "Cantidad", "UNITS", "QTY"],
-        "FECHA DEL MOVIMIENTO": [
-            "FECHA DEL MOVIMIENTO", "FECHA MOVIMIENTO", "FECHA",
-            "Fecha del movimiento",
+        "Cantidad": ["Cantidad", "CANTIDAD", "UNITS", "QTY"],
+        "Fecha del movimiento": [
+            "Fecha del movimiento", "FECHA DEL MOVIMIENTO",
+            "FECHA MOVIMIENTO", "FECHA",
         ],
     }
 
@@ -498,7 +527,7 @@ class EuropoolScraper(BaseScraper):
         page = self._page
         try:
             # El campo de fecha puede ser un mat-datepicker
-            self._rellenar_por_label("FECHA DEL MOVIMIENTO", fecha_str)
+            self._rellenar_por_label("Fecha del movimiento", fecha_str)
             page.wait_for_timeout(300)
             # Cerrar el datepicker si se abrió
             page.keyboard.press("Escape")
