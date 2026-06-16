@@ -1,24 +1,27 @@
 """Clase base para todos los scrapers. Gestiona login, reintentos y capturas en error."""
 from __future__ import annotations
 
+import os
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
 from loguru import logger
-from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
+from playwright.sync_api import BrowserContext, Page, Playwright, sync_playwright
 
 from config.settings import settings
 from core.models import Albaran, DeclarationStatus, DeclaracionResult
 
+# Directorio de perfil dedicado al watcher (persiste la sesión automáticamente)
+_EDGE_PROFILE_DIR = settings.output_dir / "edge_profile"
+
 
 class BaseScraper(ABC):
     portal_name: str = "base"
-    _session_file: Path | None = None  # cada scraper puede definir su propia ruta
+    _session_file: Path | None = None  # ya no se usa con perfil persistente
 
     def __init__(self) -> None:
         self._playwright: Playwright | None = None
-        self._browser: Browser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
 
@@ -28,34 +31,45 @@ class BaseScraper(ABC):
 
     def _start_browser(self) -> None:
         self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.launch(
-            headless=settings.headless,
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-        )
+        _EDGE_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Reutilizar sesión guardada si existe (evita re-login)
-        session_path = self._session_file
-        ctx_kwargs: dict = {"viewport": {"width": 1440, "height": 900}, "locale": "es-ES"}
-        if session_path and session_path.exists():
-            ctx_kwargs["storage_state"] = str(session_path)
-            logger.debug(f"[{self.portal_name}] Cargando sesión guardada: {session_path}")
+        # Usar Microsoft Edge real (tiene Windows Hello / SSO integrado)
+        # Si Edge no está instalado, intenta Chrome; si tampoco, Chromium puro
+        for channel in ("msedge", "chrome", None):
+            try:
+                kwargs = dict(
+                    user_data_dir=str(_EDGE_PROFILE_DIR),
+                    headless=settings.headless,
+                    args=["--no-sandbox", "--disable-dev-shm-usage"],
+                    viewport={"width": 1440, "height": 900},
+                    locale="es-ES",
+                )
+                if channel:
+                    kwargs["channel"] = channel
 
-        self._context = self._browser.new_context(**ctx_kwargs)
+                self._context = self._playwright.chromium.launch_persistent_context(**kwargs)
+                logger.debug(f"[{self.portal_name}] Navegador: {channel or 'chromium'}")
+                break
+            except Exception as exc:
+                logger.debug(f"[{self.portal_name}] Canal {channel} no disponible: {exc}")
+                self._context = None
+
+        if self._context is None:
+            raise RuntimeError("No se pudo iniciar ningún navegador (Edge, Chrome o Chromium).")
+
         self._page = self._context.new_page()
         self._page.set_default_timeout(settings.browser_timeout_ms)
 
     def _save_session(self) -> None:
-        """Persiste cookies y localStorage para evitar re-login en la siguiente ejecución."""
-        if self._session_file and self._context:
-            self._session_file.parent.mkdir(parents=True, exist_ok=True)
-            self._context.storage_state(path=str(self._session_file))
-            logger.debug(f"[{self.portal_name}] Sesión guardada en {self._session_file}")
+        """Con perfil persistente la sesión se guarda sola — no hace nada."""
+        pass
 
     def _stop_browser(self) -> None:
         if self._context:
-            self._context.close()
-        if self._browser:
-            self._browser.close()
+            try:
+                self._context.close()
+            except Exception:
+                pass
         if self._playwright:
             self._playwright.stop()
 
@@ -63,7 +77,10 @@ class BaseScraper(ABC):
         settings.screenshots_dir.mkdir(parents=True, exist_ok=True)
         path = settings.screenshots_dir / f"{self.portal_name}_{name}_{int(time.time())}.png"
         if self._page:
-            self._page.screenshot(path=str(path), full_page=True)
+            try:
+                self._page.screenshot(path=str(path), full_page=True)
+            except Exception:
+                pass
         return path
 
     # ------------------------------------------------------------------
@@ -95,9 +112,6 @@ class BaseScraper(ABC):
                 result.error_message = str(exc)
                 if attempt == settings.retry_attempts:
                     result.status = DeclarationStatus.ERROR
-                    # Borrar sesión corrupta para forzar re-login la próxima vez
-                    if self._session_file and self._session_file.exists():
-                        self._session_file.unlink(missing_ok=True)
                 else:
                     time.sleep(2 ** attempt)
             finally:
