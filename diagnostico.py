@@ -3,10 +3,11 @@ diagnostico.py — Captura completa del portal Europool para análisis.
 
 Qué hace:
   1. Abre Edge con el perfil persistente (headless=False)
-  2. Si no hay sesión, te pide login manual UNA vez
-  3. Navega a webportal.europoolsystem.com/#/dashboard
-  4. Navega a /#/flows/new (formulario de declaración)
-  5. Guarda screenshots + HTML en la carpeta  diagnostico/
+  2. Si no hay sesión, te pide login manual
+  3. Te pide que hagas click en MY EPS manualmente (para evitar el problema
+     de la nueva pestaña que no se detecta automáticamente)
+  4. Una vez en el webportal, navega al formulario y vuelca todo
+  5. Guarda screenshots + HTML + JSON en la carpeta  diagnostico/
 
 Uso:
     python diagnostico.py
@@ -15,15 +16,15 @@ Al terminar, comparte la carpeta  diagnostico/  (o un zip).
 """
 
 import json
-import time
+import os
 from datetime import datetime
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
 # ── Configuración ──────────────────────────────────────────────────────────
+HUB_URL       = "https://my.europoolsystem.com"
 PORTAL_URL    = "https://webportal.europoolsystem.com"
-DASHBOARD_URL = "https://webportal.europoolsystem.com/#/dashboard"
 FLOWS_NEW_URL = "https://webportal.europoolsystem.com/#/flows/new"
 
 _ROOT        = Path(__file__).resolve().parent
@@ -34,20 +35,15 @@ OUT_DIR      = _ROOT / "diagnostico"
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 def guardar(page, nombre: str, out: Path) -> None:
-    """Guarda screenshot + HTML con el nombre dado."""
     ts = datetime.now().strftime("%H%M%S")
     slug = f"{ts}_{nombre}"
-
-    # Screenshot
     img = out / f"{slug}.png"
+    html = out / f"{slug}.html"
     try:
         page.screenshot(path=str(img), full_page=True)
-        print(f"  [IMG] {img.name}")
+        print(f"  [IMG]  {img.name}")
     except Exception as e:
-        print(f"  [IMG] ERROR: {e}")
-
-    # HTML
-    html = out / f"{slug}.html"
+        print(f"  [IMG]  ERROR: {e}")
     try:
         html.write_text(page.content(), encoding="utf-8")
         print(f"  [HTML] {html.name}")
@@ -55,8 +51,23 @@ def guardar(page, nombre: str, out: Path) -> None:
         print(f"  [HTML] ERROR: {e}")
 
 
-def volcar_elementos(page, out: Path, nombre: str) -> dict:
-    """Extrae información de todos los elementos de formulario de la página."""
+def perfil_info(label: str) -> None:
+    """Muestra cuántos archivos y el tamaño total del perfil."""
+    try:
+        archivos = list(PROFILE_DIR.rglob("*"))
+        total = sum(f.stat().st_size for f in archivos if f.is_file())
+        print(f"  [{label}] Perfil: {len(archivos)} archivos, {total // 1024} KB")
+    except Exception as e:
+        print(f"  [{label}] Perfil: no se pudo leer ({e})")
+
+
+def listar_pestanas(context) -> None:
+    print(f"  Pestañas abiertas: {len(context.pages)}")
+    for i, p in enumerate(context.pages):
+        print(f"    [{i}] {p.url}")
+
+
+def volcar_elementos(page, out: Path) -> dict:
     data = {
         "url": page.url,
         "ng_select": [],
@@ -66,7 +77,6 @@ def volcar_elementos(page, out: Path, nombre: str) -> dict:
         "text_visible": [],
     }
 
-    # ng-select
     try:
         for i, el in enumerate(page.locator("ng-select").all()):
             try:
@@ -75,14 +85,13 @@ def volcar_elementos(page, out: Path, nombre: str) -> dict:
                     "class": el.get_attribute("class") or "",
                     "placeholder": el.get_attribute("placeholder") or "",
                     "aria_label": el.get_attribute("aria-label") or "",
-                    "text": (el.text_content() or "").strip()[:100],
+                    "text": (el.text_content() or "").strip()[:120],
                 })
             except Exception:
                 pass
     except Exception:
         pass
 
-    # inputs
     try:
         for i, el in enumerate(page.locator("input:visible").all()):
             try:
@@ -93,13 +102,13 @@ def volcar_elementos(page, out: Path, nombre: str) -> dict:
                     "placeholder": el.get_attribute("placeholder") or "",
                     "id": el.get_attribute("id") or "",
                     "aria_label": el.get_attribute("aria-label") or "",
+                    "formcontrolname": el.get_attribute("formcontrolname") or "",
                 })
             except Exception:
                 pass
     except Exception:
         pass
 
-    # buttons
     try:
         for i, el in enumerate(page.locator("button:visible").all()):
             try:
@@ -111,20 +120,19 @@ def volcar_elementos(page, out: Path, nombre: str) -> dict:
     except Exception:
         pass
 
-    # labels / mat-label / .ng-label
     try:
-        for sel in ["label", "mat-label", ".ng-placeholder", ".form-label", "span.label"]:
+        for sel in ["label", "mat-label", ".ng-placeholder", "span.label",
+                    ".form-label", "[class*='label']"]:
             for el in page.locator(sel).all():
                 try:
                     t = (el.text_content() or "").strip()
-                    if t and t not in data["labels"]:
+                    if t and len(t) < 80 and t not in data["labels"]:
                         data["labels"].append(t)
                 except Exception:
                     pass
     except Exception:
         pass
 
-    # texto visible en pantalla (primeros 30 elementos de texto)
     try:
         texts = page.evaluate("""() => {
             const walker = document.createTreeWalker(
@@ -132,9 +140,9 @@ def volcar_elementos(page, out: Path, nombre: str) -> dict:
             );
             const result = [];
             let node;
-            while ((node = walker.nextNode()) && result.length < 40) {
+            while ((node = walker.nextNode()) && result.length < 50) {
                 const t = node.textContent.trim();
-                if (t.length > 3 && t.length < 120) result.push(t);
+                if (t.length > 2 && t.length < 150) result.push(t);
             }
             return result;
         }""")
@@ -142,24 +150,11 @@ def volcar_elementos(page, out: Path, nombre: str) -> dict:
     except Exception:
         pass
 
-    # Guardar JSON
-    json_path = out / f"{nombre}.json"
+    out.mkdir(parents=True, exist_ok=True)
+    json_path = out / "elementos_formulario.json"
     json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"  [JSON] {json_path.name}")
     return data
-
-
-def esta_logueado(page) -> bool:
-    try:
-        if page.locator("a:has-text('Log in'), button:has-text('Log in')").count() > 0:
-            return False
-        if "login.microsoftonline.com" in page.url:
-            return False
-        if "my.europoolsystem.com" not in page.url and "webportal.europoolsystem.com" not in page.url:
-            return False
-    except Exception:
-        return False
-    return True
 
 
 # ── Main ───────────────────────────────────────────────────────────────────
@@ -181,6 +176,7 @@ def main():
     log(f"  Perfil   : {PROFILE_DIR}")
     log(f"  Salida   : {OUT_DIR}")
     log("")
+    perfil_info("INICIO")
 
     with sync_playwright() as p:
         context = None
@@ -190,7 +186,7 @@ def main():
                 kwargs = dict(
                     user_data_dir=str(PROFILE_DIR),
                     headless=False,
-                    slow_mo=600,
+                    slow_mo=400,
                     viewport={"width": 1440, "height": 900},
                     locale="es-ES",
                 )
@@ -207,153 +203,155 @@ def main():
             log("ERROR: no se pudo abrir ningún navegador.")
             return
 
+        # Usar primera página existente (tiene las cookies del perfil)
         page = context.pages[0] if context.pages else context.new_page()
         page.set_default_timeout(30_000)
 
-        # ── PASO 1: abrir portal ──────────────────────────────────────
-        log("\n[PASO 1] Abriendo portal...")
-        page.goto(PORTAL_URL)
+        # ── PASO 1: ir al HUB ────────────────────────────────────────
+        log("\n[PASO 1] Abriendo hub my.europoolsystem.com...")
+        page.goto(HUB_URL)
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(3_000)
         log(f"  URL: {page.url}")
-        guardar(page, "paso1_portal", OUT_DIR)
+        listar_pestanas(context)
+        guardar(page, "paso1_hub", OUT_DIR)
 
         # ── PASO 2: login manual si hace falta ───────────────────────
-        if not esta_logueado(page):
+        hub_logueado = False
+        try:
+            hub_logueado = (
+                page.locator("text=MY EPS").count() > 0
+                or page.locator("text=Log out").count() > 0
+            )
+        except Exception:
+            pass
+
+        if not hub_logueado:
             log("")
             log("*" * 60)
-            log("  NO hay sesión guardada en este perfil.")
+            log("  NO hay sesión en el hub.")
             log("")
             log("  En la ventana del navegador:")
             log("    1. Haz click en 'Log in'")
             log("    2. Elige tu cuenta y autentica con PIN / Windows Hello")
-            log("    3. Cuando veas el dashboard o 'YOUR PORTALS', para")
+            log("    3. Cuando veas 'YOUR PORTALS' con el tile MY EPS, PARA")
             log("*" * 60)
-            input("\n  Pulsa ENTER cuando hayas terminado el login...")
+            input("\n  Pulsa ENTER cuando veas el tile MY EPS...")
             page.wait_for_timeout(2_000)
             log(f"  URL tras login: {page.url}")
             guardar(page, "paso2_tras_login", OUT_DIR)
         else:
-            log("  Sesión activa, no hace falta login.")
+            log("  Sesión activa en el hub.")
 
-        # ── PASO 3: acceder al webportal via MY EPS ──────────────────
-        log("\n[PASO 3] Buscando tile MY EPS para abrir webportal...")
-        guardar(page, "paso3_hub_antes", OUT_DIR)
+        perfil_info("TRAS LOGIN")
 
-        # MY EPS abre webportal.europoolsystem.com en NUEVA PESTAÑA
-        # page.goto() no funciona porque la sesión es de my.europoolsystem.com
+        # ── PASO 3: MY EPS → nueva pestaña (MANUAL) ─────────────────
+        log("")
+        log("*" * 60)
+        log("  PASO 3 — ACCION MANUAL:")
+        log("  En el navegador, haz CLICK en el tile 'MY EPS'")
+        log("  Se abrirá una nueva ventana/pestaña con el webportal")
+        log("  Espera a que cargue (verás PEDIDOS / MOVIMIENTOS)")
+        log("*" * 60)
+        input("\n  Pulsa ENTER cuando el webportal haya cargado...")
+        page.wait_for_timeout(2_000)
+
+        log(f"\n  Pestañas tras click en MY EPS: {len(context.pages)}")
+        listar_pestanas(context)
+
+        # Buscar la pestaña del webportal
         portal_page = None
-        try:
-            tile = page.locator("text=MY EPS").first
-            if tile.is_visible(timeout=5_000):
-                log("  Tile MY EPS encontrado. Haciendo click y esperando nueva pestaña...")
-                with context.expect_page(timeout=15_000) as new_page_info:
-                    tile.click()
-                portal_page = new_page_info.value
-                portal_page.wait_for_load_state("networkidle")
-                portal_page.wait_for_timeout(3_000)
-                log(f"  Nueva pestaña URL: {portal_page.url}")
-                guardar(portal_page, "paso3_nueva_pestana_webportal", OUT_DIR)
-            else:
-                log("  Tile MY EPS NO encontrado.")
-        except Exception as e:
-            log(f"  ERROR al click MY EPS / nueva pestaña: {e}")
-
-        # Si MY EPS no abrió nueva pestaña, comprobar si hay otras pestañas abiertas
-        if portal_page is None:
-            log("  Comprobando otras pestañas abiertas...")
-            for p in context.pages:
-                log(f"    Pestaña: {p.url}")
-                if "webportal.europoolsystem.com" in p.url:
-                    portal_page = p
-                    log(f"  Webportal encontrado en pestaña existente: {p.url}")
-                    break
+        for pg in context.pages:
+            if "webportal.europoolsystem.com" in pg.url:
+                portal_page = pg
+                log(f"\n  Webportal encontrado: {pg.url}")
+                break
 
         if portal_page is None:
-            log("  NO se pudo abrir webportal via MY EPS.")
-            log("  Intentando goto directo como fallback...")
-            page.goto(DASHBOARD_URL)
-            page.wait_for_timeout(4_000)
-            log(f"  URL tras goto directo: {page.url}")
+            log("\n  No se encontró pestaña de webportal.")
+            log("  Usando la página actual...")
             portal_page = page
 
-        # A partir de aquí usar portal_page
-        page = portal_page
-        log(f"\n  URL webportal: {page.url}")
+        guardar(portal_page, "paso3_webportal", OUT_DIR)
 
-        # ── PASO 4: navegar al formulario ────────────────────────────
+        # ── PASO 4: formulario flows/new ─────────────────────────────
         log("\n[PASO 4] Navegando al formulario flows/new...")
-        page.goto(FLOWS_NEW_URL)
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(4_000)
-        log(f"  URL: {page.url}")
-        guardar(page, "paso4_formulario", OUT_DIR)
+        portal_page.goto(FLOWS_NEW_URL)
+        portal_page.wait_for_load_state("networkidle")
+        portal_page.wait_for_timeout(4_000)
+        log(f"  URL: {portal_page.url}")
+        guardar(portal_page, "paso4_formulario_goto", OUT_DIR)
 
-        # Cerrar cookies si aparecen
+        # Cerrar banner de cookies si aparece
         try:
-            btn = page.locator("button:has-text('Got it'), button:has-text('Aceptar'), button:has-text('Accept')")
+            btn = portal_page.locator(
+                "button:has-text('Got it'), button:has-text('Aceptar'), button:has-text('Accept')"
+            )
             if btn.first.is_visible(timeout=3_000):
                 btn.first.click()
-                page.wait_for_timeout(1_000)
+                portal_page.wait_for_timeout(800)
                 log("  Cookie banner cerrado.")
         except Exception:
             pass
 
-        # Esperar a que cargue algo del formulario
-        log("  Esperando formulario (hasta 30s)...")
+        # Esperar a que cargue el formulario
+        log("  Esperando contenido del formulario (hasta 30s)...")
         encontrado = False
         for selector in ["text=ENCABEZAMIENTO", "ng-select", "mat-select", "form", "input"]:
             try:
-                page.wait_for_selector(selector, timeout=8_000)
-                log(f"  Formulario detectado con: {selector}")
+                portal_page.wait_for_selector(selector, timeout=8_000)
+                log(f"  Formulario detectado: {selector}")
                 encontrado = True
                 break
             except Exception:
                 pass
 
         if not encontrado:
-            log("  AVISO: no se detectó formulario en 30s.")
+            log("  AVISO: no se detectó formulario.")
 
-        page.wait_for_timeout(2_000)
-        guardar(page, "paso4b_formulario_cargado", OUT_DIR)
+        portal_page.wait_for_timeout(2_000)
+        guardar(portal_page, "paso4b_formulario_cargado", OUT_DIR)
 
-        # ── PASO 5: volcar elementos del formulario ──────────────────
+        # ── PASO 5: volcar todos los elementos ───────────────────────
         log("\n[PASO 5] Extrayendo elementos del formulario...")
-        datos = volcar_elementos(page, OUT_DIR, "elementos_formulario")
+        datos = volcar_elementos(portal_page, OUT_DIR)
 
-        log(f"\n  ng-select encontrados  : {len(datos['ng_select'])}")
+        log(f"\n  ng-select  : {len(datos['ng_select'])}")
         for s in datos["ng_select"]:
-            log(f"    [{s['nth']}] placeholder='{s['placeholder']}' aria-label='{s['aria_label']}'")
-            log(f"         texto='{s['text']}'")
+            log(f"    [{s['nth']}] placeholder='{s['placeholder']}' | aria='{s['aria_label']}' | texto='{s['text']}'")
 
-        log(f"\n  inputs visibles        : {len(datos['inputs'])}")
+        log(f"\n  inputs     : {len(datos['inputs'])}")
         for inp in datos["inputs"]:
-            log(f"    [{inp['nth']}] type={inp['type']} name='{inp['name']}' placeholder='{inp['placeholder']}' id='{inp['id']}'")
+            log(f"    [{inp['nth']}] type={inp['type']} name='{inp['name']}' placeholder='{inp['placeholder']}' id='{inp['id']}' fcn='{inp['formcontrolname']}'")
 
-        log(f"\n  botones visibles       : {len(datos['buttons'])}")
+        log(f"\n  botones    : {len(datos['buttons'])}")
         for b in datos["buttons"]:
             log(f"    [{b['nth']}] '{b['text']}'")
 
-        log(f"\n  labels                 : {datos['labels']}")
-        log(f"\n  texto visible (muestra): {datos['text_visible'][:15]}")
+        log(f"\n  labels     : {datos['labels']}")
+        log(f"\n  texto (15) : {datos['text_visible'][:15]}")
 
-        # ── PASO 6: screenshot final con scroll ──────────────────────
+        # ── PASO 6: screenshot final ─────────────────────────────────
         log("\n[PASO 6] Screenshot final...")
-        guardar(page, "paso6_final", OUT_DIR)
+        guardar(portal_page, "paso6_final", OUT_DIR)
 
         # ── Guardar log ──────────────────────────────────────────────
         log_path = OUT_DIR / "log.txt"
         log_path.write_text("\n".join(log_lines), encoding="utf-8")
 
+        perfil_info("ANTES DE CERRAR")
+
         log("")
         log("=" * 60)
         log("  DIAGNOSTICO COMPLETADO")
-        log(f"  Archivos guardados en: {OUT_DIR}")
-        log("  Comparte esa carpeta (o un zip) para el análisis.")
+        log(f"  Archivos en: {OUT_DIR}")
+        log("  Comparte esa carpeta (o un zip).")
         log("=" * 60)
 
         input("\nPulsa ENTER para cerrar el navegador...")
         context.close()
+
+    perfil_info("TRAS CERRAR")
 
 
 if __name__ == "__main__":
