@@ -101,21 +101,11 @@ def main():
         else:
             print("\n[OK] Ya estabas logueado en este perfil.")
 
-        # PASO 3: click en MY EPS
-        tile = page.locator("text=MY EPS")
-        if tile.count() > 0:
-            print("\n[PASO 3] Haciendo click en 'MY EPS'...")
-            try:
-                with context.expect_page(timeout=8000) as nueva:
-                    tile.first.click()
-                page = nueva.value
-                print("  -> Se abrio una PESTANA NUEVA")
-            except Exception:
-                print("  -> Navego en la MISMA pestana")
-            page.wait_for_timeout(5000)
-            info(page, "PASO 3: despues de click en MY EPS")
-        else:
-            print("\n[PASO 3] No se encontro el tile MY EPS")
+        # PASO 3: navegar directo al webportal (sin depender del click en MY EPS)
+        print("\n[PASO 3] Navegando directo a webportal.europoolsystem.com/#/dashboard ...")
+        page.goto("https://webportal.europoolsystem.com/#/dashboard")
+        page.wait_for_timeout(5000)
+        info(page, "PASO 3: webportal dashboard")
 
         # PASO 4: intentar abrir el formulario
         print("\n[PASO 4] Intentando abrir /#/flows/new ...")

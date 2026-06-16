@@ -88,13 +88,13 @@ class EuropoolScraper(BaseScraper):
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(3_000)
 
-        # Caso 1: hub "YOUR PORTALS" en my.europoolsystem.com → click MY EPS
+        # Caso 1: hub "YOUR PORTALS" en my.europoolsystem.com → navegar directo al webportal
         if "my.europoolsystem.com" in page.url or page.locator("text=MY EPS").count() > 0:
-            logger.debug("[europool] Hub detectado, haciendo click en MY EPS")
-            page.locator("text=MY EPS").first.click()
+            logger.debug("[europool] Hub detectado, navegando directo al webportal")
+            page.goto(DASHBOARD_URL)
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(2_000)
-            logger.info("[europool] Sesión activa (via hub MY EPS)")
+            logger.info("[europool] Sesión activa (via hub → webportal)")
             return
 
         # Caso 2: ya dentro del portal webportal sin necesitar login
