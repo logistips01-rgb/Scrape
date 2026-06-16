@@ -90,46 +90,66 @@ class IfcoScraper(BaseScraper):
         logger.info("[ifco] Login OK")
 
     def _rellenar_login(self, page) -> None:
-        """Rellena los campos de login sea en SSO o en la app React."""
-        # IFCO-N°
+        """Rellena los campos de login en el formulario SSO de IFCO."""
+        page.wait_for_timeout(1_000)
+
+        # ── IFCO-N° ─────────────────────────────────────────────────
+        # El campo muestra un popup informativo al hacer click — hay que
+        # cerrarlo con Escape antes de poder escribir
+        filled_ifco = False
         for sel in [
             "input[name='ifcoNumber']", "input[id='ifcoNumber']",
-            "input[placeholder*='612']",
+            "input[name='ifco-number']", "input[name='tenantId']",
+            "input[name='groupId']", "input[name='clientNumber']",
         ]:
             try:
                 f = page.locator(sel).first
-                if f.is_visible(timeout=1_500):
+                if f.is_visible(timeout=1_000):
+                    f.click()
+                    page.wait_for_timeout(600)
+                    page.keyboard.press("Escape")
+                    page.wait_for_timeout(300)
                     f.fill(settings.ifco_number)
+                    filled_ifco = True
                     logger.debug(f"[ifco] IFCO-N° rellenado ({sel})")
                     break
             except Exception:
                 pass
-        else:
-            try:
-                page.get_by_label("IFCO-N", exact=False).first.fill(settings.ifco_number)
-            except Exception:
-                logger.warning("[ifco] No se encontró campo IFCO-N°")
 
-        # Usuario
-        for sel in ["input[name='username']", "input[id='username']"]:
+        if not filled_ifco:
+            # Fallback: el primer input visible que no sea username ni password
             try:
-                f = page.locator(sel).first
-                if f.is_visible(timeout=1_500):
-                    f.fill(settings.ifco_user)
-                    logger.debug(f"[ifco] Usuario rellenado ({sel})")
-                    break
+                inputs = page.locator(
+                    "input:visible:not([type='password']):not([name='username'])"
+                ).all()
+                if inputs:
+                    inputs[0].click()
+                    page.wait_for_timeout(600)
+                    page.keyboard.press("Escape")
+                    page.wait_for_timeout(300)
+                    inputs[0].fill(settings.ifco_number)
+                    logger.debug("[ifco] IFCO-N° rellenado (fallback: primer input)")
+                    filled_ifco = True
             except Exception:
                 pass
-        else:
+
+        if not filled_ifco:
+            logger.warning("[ifco] No se pudo rellenar IFCO-N°")
+
+        # ── Identificación de usuario ────────────────────────────────
+        try:
+            page.locator("input[name='username']").first.fill(settings.ifco_user)
+        except Exception:
             try:
                 page.get_by_label("Identificación", exact=False).first.fill(settings.ifco_user)
             except Exception:
-                logger.warning("[ifco] No se encontró campo usuario")
+                logger.warning("[ifco] No se pudo rellenar usuario")
 
-        # Contraseña
+        # ── Contraseña ───────────────────────────────────────────────
         page.locator(SEL_PASSWORD).first.fill(settings.ifco_password)
+        page.wait_for_timeout(300)
 
-        # Submit
+        # ── Submit ───────────────────────────────────────────────────
         page.locator(SEL_LOGIN_BTN).first.click()
 
     def _ya_autenticado(self) -> bool:

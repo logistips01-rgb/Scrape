@@ -201,22 +201,57 @@ def main():
             user  = IFCO_USER     or input("  Usuario: ")
             passw = IFCO_PASSWORD or input("  Contraseña: ")
 
-            # IFCO-N°
-            for sel in ["input[name='ifcoNumber']", "input[id='ifcoNumber']",
-                        "input[placeholder*='612']", "input:nth-of-type(1)"]:
+            # Volcar inputs del formulario de login para diagnóstico
+            log("  Inputs en el formulario de login:")
+            for i, inp in enumerate(page.locator("input:visible").all()):
+                try:
+                    log(f"    [{i}] type={inp.get_attribute('type')} "
+                        f"name='{inp.get_attribute('name')}' "
+                        f"id='{inp.get_attribute('id')}' "
+                        f"placeholder='{inp.get_attribute('placeholder')}'")
+                except Exception:
+                    pass
+
+            # IFCO-N° — click, dismiss popup con Escape, luego fill
+            filled_ifco = False
+            for sel in [
+                "input[name='ifcoNumber']", "input[id='ifcoNumber']",
+                "input[name='ifco-number']", "input[name='tenantId']",
+                "input[name='groupId']", "input[name='clientNumber']",
+            ]:
                 try:
                     f = page.locator(sel).first
-                    if f.is_visible(timeout=2_000):
+                    if f.is_visible(timeout=1_000):
+                        f.click()
+                        page.wait_for_timeout(600)
+                        page.keyboard.press("Escape")
+                        page.wait_for_timeout(300)
                         f.fill(num)
                         log(f"  IFCO-N° rellenado con: {sel}")
+                        filled_ifco = True
                         break
                 except Exception:
                     pass
-            else:
+
+            if not filled_ifco:
+                # Fallback: primer input que no sea username ni password
                 try:
-                    page.get_by_label("IFCO-N", exact=False).first.fill(num)
+                    inputs = page.locator(
+                        "input:visible:not([type='password']):not([name='username'])"
+                    ).all()
+                    if inputs:
+                        inputs[0].click()
+                        page.wait_for_timeout(600)
+                        page.keyboard.press("Escape")
+                        page.wait_for_timeout(300)
+                        inputs[0].fill(num)
+                        log("  IFCO-N° rellenado con fallback (primer input)")
+                        filled_ifco = True
                 except Exception:
-                    log("  AVISO: no se pudo rellenar IFCO-N°")
+                    pass
+
+            if not filled_ifco:
+                log("  AVISO: no se pudo rellenar IFCO-N°")
 
             # Usuario
             for sel in ["input[name='username']", "input[id='username']",
