@@ -163,6 +163,10 @@ class IfcoScraper(BaseScraper):
 
         # ── Líneas de envase (panel Transacciones) ────────────────────
         for idx, linea in enumerate(albaran.lineas):
+            if idx > 0:
+                # Añadir fila nueva antes de rellenar
+                page.locator("button:has-text('Añadir nueva línea')").first.click()
+                page.wait_for_timeout(800)
             self._añadir_transaccion(linea.tipo, linea.cantidad, idx)
 
         self._screenshot(f"ifco_form_relleno_{albaran.num_albaran}")
@@ -178,65 +182,69 @@ class IfcoScraper(BaseScraper):
     # Helpers
     # ------------------------------------------------------------------
 
-    def _seleccionar_popover(self, label_text: str, valor: str) -> None:
+    def _seleccionar_popover(self, label_text: str, valor: str, nth: int = 0) -> None:
         """
-        Abre el headless UI popover asociado a la etiqueta dada y
-        selecciona la opción cuyo texto coincide con `valor`.
+        Abre el headless UI combobox asociado a la etiqueta dada (nth-ésimo)
+        y selecciona la opción cuyo texto contiene `valor`.
         """
         page = self._page
         try:
-            # Buscar contenedor que tenga la etiqueta de texto
+            # Encontrar el contenedor nth que tiene la etiqueta dada
             container = page.locator(
                 f"div:has(label:has-text('{label_text}')), "
+                f"td:has(label:has-text('{label_text}')), "
                 f"fieldset:has(legend:has-text('{label_text}'))"
-            ).first
-            btn = container.locator("button").first
+            ).nth(nth)
+            btn = container.locator("button[id^='headlessui']").first
             btn.click()
             page.wait_for_timeout(600)
 
-            # Escribir en el input de búsqueda del popover si existe
+            # Buscar input de búsqueda dentro del panel abierto
             search_input = page.locator(
-                "[role='listbox'] input, [data-headlessui-state] input"
+                "[id^='headlessui-popover-panel'] input, "
+                "[data-headlessui-state='open'] input, "
+                "[role='listbox'] input"
             ).first
             try:
                 if search_input.is_visible(timeout=2_000):
                     search_input.fill(valor)
-                    page.wait_for_timeout(500)
+                    page.wait_for_timeout(600)
             except Exception:
                 pass
 
-            # Clic en la opción
+            # Seleccionar la opción
             option = page.locator(
                 f"[role='option']:has-text('{valor}'), "
-                f"li:has-text('{valor}')"
+                f"li:has-text('{valor}'):visible"
             ).first
             option.click()
             page.wait_for_timeout(400)
-            logger.debug(f"[ifco] {label_text} → {valor}")
+            logger.debug(f"[ifco] {label_text}[{nth}] → {valor}")
 
         except Exception as exc:
-            logger.warning(f"[ifco] No se pudo seleccionar '{label_text}': {exc}")
+            logger.warning(f"[ifco] No se pudo seleccionar '{label_text}'[{nth}]: {exc}")
 
     def _añadir_transaccion(self, tipo: str, cantidad: int, idx: int = 0) -> None:
         """
         Rellena la fila idx del panel Transacciones.
-        IDs confirmados: transactions.{idx}.myAmount, headlessui-popover para Material*.
+        IDs confirmados por diagnóstico: transactions.{idx}.myAmount
+        Material* es headless UI combobox (nth=idx dentro del panel).
         """
         page = self._page
         try:
-            # Material* — headless UI popover en la fila de transacción
-            self._seleccionar_popover("Material", tipo)
+            # Material* — headless UI combobox, nth=idx (una por fila)
+            self._seleccionar_popover("Material", tipo, nth=idx)
             page.wait_for_timeout(400)
 
-            # Mis cantidades* — id confirmado
+            # Mis cantidades* — ID estable
             qty = page.locator(f"[id='transactions.{idx}.myAmount']").first
             qty.triple_click()
             qty.fill(str(cantidad))
             page.wait_for_timeout(300)
 
-            logger.debug(f"[ifco] Transacción [{idx}]: {tipo} x {cantidad}")
+            logger.debug(f"[ifco] Fila {idx}: {tipo} x {cantidad}")
         except Exception as exc:
-            logger.warning(f"[ifco] No se pudo rellenar transacción {idx}: {exc}")
+            logger.warning(f"[ifco] Error fila {idx}: {exc}")
 
     def _extraer_confirmacion(self, albaran: Albaran) -> str:
         page = self._page
