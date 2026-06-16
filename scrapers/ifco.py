@@ -46,6 +46,7 @@ SEL_DELIVERY_DATE    = "#deliveryDate"
 SEL_ALBARAN          = "#deliveryNoteNumber"
 SEL_LICENSE_PLATE    = "#licenseNumber"
 BTN_NUEVO_REGISTRO   = "button:has-text('Nuevo registro de salida')"
+BTN_GUARDAR          = "button:has-text('Guardar y salir')"
 
 
 class IfcoScraper(BaseScraper):
@@ -163,30 +164,37 @@ class IfcoScraper(BaseScraper):
         page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(3_000)
 
-        self._screenshot(f"ifco_form_inicio_{albaran.num_albaran}")
+        # Abrir el panel "Nueva salida"
+        page.locator(BTN_NUEVO_REGISTRO).first.click()
+        page.wait_for_timeout(2_000)
+        page.wait_for_selector("text=Nueva salida", timeout=10_000)
 
-        # ── Envíos hacia (cliente) ────────────────────────────────────
+        self._screenshot(f"ifco_panel_nuevo_{albaran.num_albaran}")
+
+        # ── Envíos hacia (cliente destinatario) ──────────────────────
+        # Remitente ya está pre-seleccionado con nuestra empresa
         self._seleccionar_popover("Envíos hacia", albaran.cliente_nombre)
-        page.wait_for_timeout(1_000)
-
-        # Por cada línea de envase → seleccionar material y rellenar cantidad
-        for linea in albaran.lineas:
-            self._seleccionar_popover("Número de material", linea.tipo)
-            page.wait_for_timeout(500)
+        page.wait_for_timeout(1_500)  # esperar a que aparezca el panel Transacciones
 
         # ── Fecha de entrega (dd.MM.yyyy) ─────────────────────────────
+        # Borrar el valor por defecto (hoy) y poner la fecha del albarán
         fecha = albaran.fecha_entrega.strftime("%d.%m.%Y")
-        page.fill(SEL_DELIVERY_DATE, fecha)
+        page.locator(SEL_DELIVERY_DATE).first.triple_click()
+        page.locator(SEL_DELIVERY_DATE).first.fill(fecha)
         page.wait_for_timeout(300)
 
         # ── Nº albarán ────────────────────────────────────────────────
-        page.fill(SEL_ALBARAN, albaran.num_albaran)
+        page.locator(SEL_ALBARAN).first.fill(albaran.num_albaran)
         page.wait_for_timeout(300)
+
+        # ── Líneas de envase (panel Transacciones) ────────────────────
+        for linea in albaran.lineas:
+            self._añadir_transaccion(linea.tipo, linea.cantidad)
 
         self._screenshot(f"ifco_form_relleno_{albaran.num_albaran}")
 
-        # ── Enviar ────────────────────────────────────────────────────
-        page.locator(BTN_NUEVO_REGISTRO).first.click()
+        # ── Guardar ───────────────────────────────────────────────────
+        page.locator(BTN_GUARDAR).first.click()
         page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(2_000)
 
@@ -234,6 +242,39 @@ class IfcoScraper(BaseScraper):
 
         except Exception as exc:
             logger.warning(f"[ifco] No se pudo seleccionar '{label_text}': {exc}")
+
+    def _añadir_transaccion(self, tipo: str, cantidad: int) -> None:
+        """
+        Añade una línea de envase en el panel 'Transacciones' (derecha).
+        Se activa después de seleccionar Remitente + Envíos hacia.
+        TODO: ajustar selectores cuando se vea el panel real con ifco_diagnostico.py
+        """
+        page = self._page
+        try:
+            # Seleccionar tipo de material/envase
+            self._seleccionar_popover("Número de material", tipo)
+            page.wait_for_timeout(400)
+
+            # Rellenar cantidad — buscar el input de cantidad visible
+            qty_input = page.locator("input[id*='quantity'], input[name*='quantity'], "
+                                     "input[placeholder*='antidad']").first
+            if qty_input.is_visible(timeout=3_000):
+                qty_input.triple_click()
+                qty_input.fill(str(cantidad))
+                page.wait_for_timeout(300)
+
+            # Botón para añadir la línea ("+", "Añadir", "Add")
+            add_btn = page.locator(
+                "button:has-text('Añadir'), button:has-text('Add'), "
+                "button[aria-label*='ñadir'], button[aria-label*='add']"
+            ).first
+            if add_btn.is_visible(timeout=2_000):
+                add_btn.click()
+                page.wait_for_timeout(600)
+
+            logger.debug(f"[ifco] Transacción añadida: {tipo} x {cantidad}")
+        except Exception as exc:
+            logger.warning(f"[ifco] No se pudo añadir transacción {tipo}: {exc}")
 
     def _extraer_confirmacion(self, albaran: Albaran) -> str:
         page = self._page

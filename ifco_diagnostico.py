@@ -264,12 +264,47 @@ def main():
         log(f"  links: {[l['text'] for l in datos['links'][:10]]}")
         log(f"  texto: {datos['text_visible'][:10]}")
 
-        # ── PASO 4: buscar formulario de declaración ─────────────────
-        log("\n[PASO 4] Buscando formulario de declaración...")
-        log("  Mira la pantalla. ¿Hay un botón para crear nueva declaración?")
-        log("  Menús posibles: 'Return', 'Delivery', 'Movements', 'Nueva declaración'...")
+        # ── PASO 3b: ir a la página de transacciones ─────────────────
+        TRANSACTIONS_URL = (
+            "https://www.ifco-online.com/myifco-core-fe"
+            "/clearing/navi.transactions/transaction-overview?poolId=3"
+        )
+        log(f"\n[PASO 3b] Navegando a transacciones...")
+        page.goto(TRANSACTIONS_URL)
+        page.wait_for_load_state("domcontentloaded")
+        page.wait_for_timeout(3_000)
+        log(f"  URL: {page.url}")
+        guardar(page, "paso3b_transacciones", OUT_DIR)
+
+        # ── PASO 4: abrir "Nueva salida" ─────────────────────────────
+        log("\n[PASO 4] Buscando botón 'Nuevo registro de salida'...")
+        try:
+            btn = page.locator("button:has-text('Nuevo registro de salida')").first
+            if btn.is_visible(timeout=5_000):
+                log("  Botón encontrado. Haciendo click...")
+                btn.click()
+                page.wait_for_timeout(3_000)
+                log("  Panel abierto.")
+            else:
+                log("  Botón no visible. Intentando manualmente...")
+                input("  Abre el formulario manualmente y pulsa ENTER...")
+        except Exception as e:
+            log(f"  Error: {e}")
+            input("  Abre el formulario manualmente y pulsa ENTER...")
+
+        log(f"  URL: {page.url}")
+        guardar(page, "paso4_panel_nueva_salida", OUT_DIR)
+
         log("")
-        log("  Navega al formulario de declaración manualmente si es necesario.")
+        log("*" * 60)
+        log("  PASO 4b: selecciona un cliente en 'Envíos hacia'")
+        log("  (cualquiera sirve, solo para ver qué aparece en Transacciones)")
+        log("*" * 60)
+        input("  Pulsa ENTER cuando hayas seleccionado el cliente...")
+        page.wait_for_timeout(2_000)
+        guardar(page, "paso4b_con_cliente", OUT_DIR)
+
+        log("\n[PASO 5] Capturando formulario completo...")
         input("  Pulsa ENTER cuando estés en el formulario de declaración...")
         page.wait_for_timeout(2_000)
 
