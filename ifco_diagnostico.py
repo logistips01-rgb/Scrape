@@ -186,7 +186,14 @@ def main():
         guardar(page, "paso1_portal", OUT_DIR)
 
         # ── PASO 2: login si hace falta ──────────────────────────────
-        if "sso.ifco-online.com" in page.url or "login" in page.url.lower():
+        # La app React carga en la misma URL con o sin sesión; detectar
+        # por presencia del botón de login, no por URL
+        necesita_login = (
+            "sso.ifco-online.com" in page.url
+            or page.locator("button:has-text('INICIAR SESIÓN')").count() > 0
+            or page.locator("text=Clearing").count() == 0
+        )
+        if necesita_login:
             log("\n[PASO 2] Pantalla de login detectada. Rellenando...")
             guardar(page, "paso2_login_form", OUT_DIR)
 
