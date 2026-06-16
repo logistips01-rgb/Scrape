@@ -215,10 +215,9 @@ def main():
             # IFCO-N° — click, dismiss popup con Escape, luego fill
             filled_ifco = False
             for sel in [
+                "input[name='domainname']",   # confirmado por diagnóstico
                 "input[placeholder='IFCO-N°']",
                 "input[placeholder*='IFCO']",
-                "input[name='ifcoNumber']", "input[id='ifcoNumber']",
-                "input[name='ifco-number']", "input[name='tenantId']",
             ]:
                 try:
                     f = page.locator(sel).first

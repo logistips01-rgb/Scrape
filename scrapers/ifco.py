@@ -96,61 +96,14 @@ class IfcoScraper(BaseScraper):
         # ── IFCO-N° ─────────────────────────────────────────────────
         # El campo muestra un popup informativo al hacer click — hay que
         # cerrarlo con Escape antes de poder escribir
-        filled_ifco = False
-        for sel in [
-            "input[placeholder='IFCO-N°']",
-            "input[placeholder*='IFCO']",
-            "input[name='ifcoNumber']", "input[id='ifcoNumber']",
-            "input[name='ifco-number']", "input[name='tenantId']",
-        ]:
-            try:
-                f = page.locator(sel).first
-                if f.is_visible(timeout=1_000):
-                    f.click()
-                    page.wait_for_timeout(600)
-                    page.keyboard.press("Escape")
-                    page.wait_for_timeout(300)
-                    f.fill(settings.ifco_number)
-                    filled_ifco = True
-                    logger.debug(f"[ifco] IFCO-N° rellenado ({sel})")
-                    break
-            except Exception:
-                pass
-
-        if not filled_ifco:
-            # Fallback: el primer input visible que no sea username ni password
-            try:
-                inputs = page.locator(
-                    "input:visible:not([type='password']):not([name='username'])"
-                ).all()
-                if inputs:
-                    inputs[0].click()
-                    page.wait_for_timeout(600)
-                    page.keyboard.press("Escape")
-                    page.wait_for_timeout(300)
-                    inputs[0].fill(settings.ifco_number)
-                    logger.debug("[ifco] IFCO-N° rellenado (fallback: primer input)")
-                    filled_ifco = True
-            except Exception:
-                pass
-
-        if not filled_ifco:
-            logger.warning("[ifco] No se pudo rellenar IFCO-N°")
-
-        # ── Identificación de usuario ────────────────────────────────
-        try:
-            page.locator("input[name='username']").first.fill(settings.ifco_user)
-        except Exception:
-            try:
-                page.get_by_label("Identificación", exact=False).first.fill(settings.ifco_user)
-            except Exception:
-                logger.warning("[ifco] No se pudo rellenar usuario")
-
-        # ── Contraseña ───────────────────────────────────────────────
-        page.locator(SEL_PASSWORD).first.fill(settings.ifco_password)
+        # Selectores confirmados por diagnóstico:
+        # IFCO-N°  = input[name='domainname']
+        # usuario  = input[name='username']
+        # password = input[name='password']
+        page.locator("input[name='domainname']").first.fill(settings.ifco_number)
+        page.locator("input[name='username']").first.fill(settings.ifco_user)
+        page.locator("input[name='password']").first.fill(settings.ifco_password)
         page.wait_for_timeout(300)
-
-        # ── Submit ───────────────────────────────────────────────────
         page.locator(SEL_LOGIN_BTN).first.click()
 
     def _ya_autenticado(self) -> bool:
@@ -209,8 +162,8 @@ class IfcoScraper(BaseScraper):
         page.wait_for_timeout(300)
 
         # ── Líneas de envase (panel Transacciones) ────────────────────
-        for linea in albaran.lineas:
-            self._añadir_transaccion(linea.tipo, linea.cantidad)
+        for idx, linea in enumerate(albaran.lineas):
+            self._añadir_transaccion(linea.tipo, linea.cantidad, idx)
 
         self._screenshot(f"ifco_form_relleno_{albaran.num_albaran}")
 
@@ -264,38 +217,26 @@ class IfcoScraper(BaseScraper):
         except Exception as exc:
             logger.warning(f"[ifco] No se pudo seleccionar '{label_text}': {exc}")
 
-    def _añadir_transaccion(self, tipo: str, cantidad: int) -> None:
+    def _añadir_transaccion(self, tipo: str, cantidad: int, idx: int = 0) -> None:
         """
-        Añade una línea de envase en el panel 'Transacciones' (derecha).
-        Se activa después de seleccionar Remitente + Envíos hacia.
-        TODO: ajustar selectores cuando se vea el panel real con ifco_diagnostico.py
+        Rellena la fila idx del panel Transacciones.
+        IDs confirmados: transactions.{idx}.myAmount, headlessui-popover para Material*.
         """
         page = self._page
         try:
-            # Seleccionar tipo de material/envase
-            self._seleccionar_popover("Número de material", tipo)
+            # Material* — headless UI popover en la fila de transacción
+            self._seleccionar_popover("Material", tipo)
             page.wait_for_timeout(400)
 
-            # Rellenar cantidad — buscar el input de cantidad visible
-            qty_input = page.locator("input[id*='quantity'], input[name*='quantity'], "
-                                     "input[placeholder*='antidad']").first
-            if qty_input.is_visible(timeout=3_000):
-                qty_input.triple_click()
-                qty_input.fill(str(cantidad))
-                page.wait_for_timeout(300)
+            # Mis cantidades* — id confirmado
+            qty = page.locator(f"[id='transactions.{idx}.myAmount']").first
+            qty.triple_click()
+            qty.fill(str(cantidad))
+            page.wait_for_timeout(300)
 
-            # Botón para añadir la línea ("+", "Añadir", "Add")
-            add_btn = page.locator(
-                "button:has-text('Añadir'), button:has-text('Add'), "
-                "button[aria-label*='ñadir'], button[aria-label*='add']"
-            ).first
-            if add_btn.is_visible(timeout=2_000):
-                add_btn.click()
-                page.wait_for_timeout(600)
-
-            logger.debug(f"[ifco] Transacción añadida: {tipo} x {cantidad}")
+            logger.debug(f"[ifco] Transacción [{idx}]: {tipo} x {cantidad}")
         except Exception as exc:
-            logger.warning(f"[ifco] No se pudo añadir transacción {tipo}: {exc}")
+            logger.warning(f"[ifco] No se pudo rellenar transacción {idx}: {exc}")
 
     def _extraer_confirmacion(self, albaran: Albaran) -> str:
         page = self._page
