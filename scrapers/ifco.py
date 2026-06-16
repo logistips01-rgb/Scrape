@@ -98,9 +98,10 @@ class IfcoScraper(BaseScraper):
         # cerrarlo con Escape antes de poder escribir
         filled_ifco = False
         for sel in [
+            "input[placeholder='IFCO-N°']",
+            "input[placeholder*='IFCO']",
             "input[name='ifcoNumber']", "input[id='ifcoNumber']",
             "input[name='ifco-number']", "input[name='tenantId']",
-            "input[name='groupId']", "input[name='clientNumber']",
         ]:
             try:
                 f = page.locator(sel).first
