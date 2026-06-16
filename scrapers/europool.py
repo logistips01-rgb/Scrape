@@ -90,12 +90,12 @@ class EuropoolScraper(BaseScraper):
         page.wait_for_timeout(3_000)
 
         # ── Click en MY EPS (misma pestaña, confirmado por diagnóstico) ──────
-        logger.debug("[europool] Haciendo click en MY EPS...")
+        logger.debug("[europool] Haciendo click en MY EPS via JS...")
         try:
             tile = page.locator("text=MY EPS").first
-            tile.wait_for(state="attached", timeout=15_000)  # solo presencia en DOM, no visibilidad
-            tile.scroll_into_view_if_needed()
-            tile.click(force=True)                 # force=True bypasses visibility checks
+            tile.wait_for(state="attached", timeout=15_000)
+            # JS click: bypassa todos los checks de Playwright (visibilidad, scroll, estabilidad)
+            tile.evaluate("el => (el.closest('a,[role=button],[tabindex],button') || el.parentElement || el).click()")
             page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=20_000)
             page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(2_000)

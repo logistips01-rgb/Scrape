@@ -250,12 +250,12 @@ def main():
         log("\n[PASO 3] Haciendo click en MY EPS...")
         portal_page = None
 
-        # Intentar automáticamente con force=True (bypassa checks de visibilidad)
+        # Intentar automáticamente via JS click (bypassa todos los checks de Playwright)
         try:
             tile = page.locator("text=MY EPS").first
-            tile.wait_for(state="attached", timeout=10_000)  # solo presencia en DOM, no visibilidad
-            tile.scroll_into_view_if_needed()
-            tile.click(force=True)                 # force=True bypassa checks de visibilidad
+            tile.wait_for(state="attached", timeout=10_000)
+            # JS click: bypassa visibilidad, scroll y estabilidad
+            tile.evaluate("el => (el.closest('a,[role=button],[tabindex],button') || el.parentElement || el).click()")
             page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=20_000)
             page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(2_000)
