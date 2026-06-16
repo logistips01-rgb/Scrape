@@ -210,7 +210,7 @@ def main():
         # ── PASO 1: ir al HUB ────────────────────────────────────────
         log("\n[PASO 1] Abriendo hub my.europoolsystem.com...")
         page.goto(HUB_URL)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(3_000)
         log(f"  URL: {page.url}")
         listar_pestanas(context)
@@ -255,7 +255,7 @@ def main():
             if tile.is_visible(timeout=5_000):
                 tile.click()
                 page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=15_000)
-                page.wait_for_load_state("networkidle")
+                page.wait_for_load_state("domcontentloaded")
                 page.wait_for_timeout(2_000)
                 log(f"  Click automático OK. URL: {page.url}")
                 portal_page = page
@@ -288,7 +288,7 @@ def main():
         # ── PASO 4: formulario flows/new ─────────────────────────────
         log("\n[PASO 4] Navegando al formulario flows/new...")
         portal_page.goto(FLOWS_NEW_URL)
-        portal_page.wait_for_load_state("networkidle")
+        portal_page.wait_for_load_state("domcontentloaded")
         portal_page.wait_for_timeout(4_000)
         log(f"  URL: {portal_page.url}")
         guardar(portal_page, "paso4_formulario_goto", OUT_DIR)

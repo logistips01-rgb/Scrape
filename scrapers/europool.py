@@ -85,7 +85,7 @@ class EuropoolScraper(BaseScraper):
         page = self._page
 
         page.goto(PORTAL_URL)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(3_000)
 
         # Caso 1: hub "YOUR PORTALS" en my.europoolsystem.com
@@ -97,7 +97,7 @@ class EuropoolScraper(BaseScraper):
                 tile.wait_for(state="visible", timeout=10_000)
                 tile.click()
                 page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=20_000)
-                page.wait_for_load_state("networkidle")
+                page.wait_for_load_state("domcontentloaded")
                 page.wait_for_timeout(2_000)
                 logger.info(f"[europool] Webportal cargado: {page.url}")
                 return
@@ -120,7 +120,7 @@ class EuropoolScraper(BaseScraper):
             if login_btn.first.is_visible(timeout=8_000):
                 logger.debug("[europool] Haciendo click en botón Log in")
                 login_btn.first.click()
-                page.wait_for_load_state("networkidle")
+                page.wait_for_load_state("domcontentloaded")
         except Exception:
             pass
 
@@ -139,7 +139,7 @@ class EuropoolScraper(BaseScraper):
             if tile.first.is_visible(timeout=5_000):
                 logger.debug(f"[europool] Seleccionando cuenta: {settings.europool_user}")
                 tile.first.click()
-                page.wait_for_load_state("networkidle")
+                page.wait_for_load_state("domcontentloaded")
                 page.wait_for_timeout(2_000)
                 # Si la cuenta tiene sesión activa redirige directo al portal
                 if self._ya_autenticado():
@@ -156,7 +156,7 @@ class EuropoolScraper(BaseScraper):
                 email_field.fill(settings.europool_user)
                 page.wait_for_timeout(800)
                 email_field.press("Enter")
-                page.wait_for_load_state("networkidle")
+                page.wait_for_load_state("domcontentloaded")
         except Exception:
             pass
 
@@ -165,17 +165,17 @@ class EuropoolScraper(BaseScraper):
         page.fill(MS_PASSWORD_INPUT, settings.europool_password)
         page.wait_for_timeout(500)
         page.locator(MS_PASSWORD_INPUT).press("Enter")
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
 
         # "¿Mantener sesión?" → Sí
         try:
             if page.locator(MS_KEEP_YES_BTN).is_visible(timeout=5_000):
                 page.click(MS_KEEP_YES_BTN)
-                page.wait_for_load_state("networkidle")
+                page.wait_for_load_state("domcontentloaded")
         except Exception:
             pass
 
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
 
         if not self._ya_autenticado():
             self._screenshot("login_fallido")
@@ -207,7 +207,7 @@ class EuropoolScraper(BaseScraper):
         page = self._page
 
         page.goto(FLOWS_NEW_URL)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(2_000)
 
         # Cerrar aviso de cookies si aparece
@@ -232,7 +232,7 @@ class EuropoolScraper(BaseScraper):
 
         self._screenshot(f"encabezamiento_{albaran.num_albaran}")
         page.click(BTN_IR_LINEAS)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(800)  # Angular re-render
 
         # ── Sección 2: LÍNEAS PEDIDO ─────────────────────────────────
@@ -241,7 +241,7 @@ class EuropoolScraper(BaseScraper):
 
         self._screenshot(f"lineas_{albaran.num_albaran}")
         page.click(BTN_ACCEDER_FECHA)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(800)
 
         # ── Sección 3: FECHA TRANSACCIÓN ─────────────────────────────
@@ -251,7 +251,7 @@ class EuropoolScraper(BaseScraper):
 
         # "SIGUIENTE" lleva a la pantalla de resumen, luego "ENVIAR" confirma
         page.click(BTN_SIGUIENTE)
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(600)
 
         # En el resumen pulsamos ENVIAR para registrar el movimiento
@@ -259,7 +259,7 @@ class EuropoolScraper(BaseScraper):
             page.wait_for_selector(BTN_ENVIAR, timeout=8_000)
             self._screenshot(f"resumen_{albaran.num_albaran}")
             page.click(BTN_ENVIAR)
-            page.wait_for_load_state("networkidle")
+            page.wait_for_load_state("domcontentloaded")
         except Exception:
             # Si no hay pantalla de resumen intermedia, el botón ya era ENVIAR
             pass
