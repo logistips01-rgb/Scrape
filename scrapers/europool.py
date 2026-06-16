@@ -105,29 +105,41 @@ class EuropoolScraper(BaseScraper):
             if "webportal.europoolsystem.com" not in page.url:
                 raise RuntimeError(f"No se pudo acceder al webportal via MY EPS: {exc}")
 
-        # ── Página de login → hay dos botones "Log in": nav bar (inútil) y contenido ──
-        # Usar JS para encontrar el del contenido principal (no en nav/header)
-        # que redirige a Microsoft con login_hint ya prefijado.
+        # ── Página de login → extraer href OAuth del enlace "Log in" y navegar ──────
         try:
-            login_btn = page.locator("a:has-text('Log in'), button:has-text('Log in')")
-            if login_btn.count() > 0 and login_btn.first.is_visible(timeout=5_000):
-                logger.info("[europool] Página de login detectada, haciendo click en botón principal...")
-                page.evaluate("""() => {
-                    const all = Array.from(document.querySelectorAll('a, button'))
-                        .filter(el =>
-                            el.textContent.trim() === 'Log in' &&
-                            el.offsetParent !== null
-                        );
-                    const main = all.find(el => !el.closest('nav, header, [role="navigation"]'));
-                    (main || all[all.length - 1]).click();
+            login_btns = page.locator("a:has-text('Log in'), button:has-text('Log in')")
+            if login_btns.count() > 0 and login_btns.first.is_visible(timeout=5_000):
+                logger.info("[europool] Página de login detectada, obteniendo URL OAuth...")
+
+                # Esperar a que Angular asigne el href dinámicamente
+                try:
+                    page.wait_for_function("""() => {
+                        const a = Array.from(document.querySelectorAll('a'))
+                            .find(el => el.textContent.trim() === 'Log in' && el.href && el.href.length > 10);
+                        return !!a;
+                    }""", timeout=10_000)
+                except Exception:
+                    pass
+
+                oauth_url = page.evaluate("""() => {
+                    const link = Array.from(document.querySelectorAll('a'))
+                        .find(el => el.textContent.trim() === 'Log in' && el.href);
+                    return link ? link.href : null;
                 }""")
 
-                # Esperar redirección a Microsoft
+                if oauth_url and "microsoftonline" in oauth_url:
+                    logger.info(f"[europool] Navegando a Microsoft OAuth directamente")
+                    page.goto(oauth_url)
+                else:
+                    logger.info(f"[europool] Sin href OAuth, haciendo click...")
+                    login_btns.first.click()
+
+                # Esperar Microsoft
                 try:
                     page.wait_for_url("**/login.microsoftonline.com/**", timeout=15_000)
                     page.wait_for_load_state("domcontentloaded")
                     page.wait_for_timeout(1_000)
-                    logger.info(f"[europool] Microsoft cargado: {page.url}")
+                    logger.info(f"[europool] Microsoft cargado: {page.url[:80]}")
 
                     # Seleccionar cuenta — múltiples fallbacks
                     for sel in [
@@ -141,7 +153,7 @@ class EuropoolScraper(BaseScraper):
                         try:
                             el = page.locator(sel).first
                             if el.is_visible(timeout=3_000):
-                                logger.info(f"[europool] Cuenta encontrada ({sel}), seleccionando...")
+                                logger.info(f"[europool] Cuenta encontrada ({sel})")
                                 el.click()
                                 page.wait_for_load_state("domcontentloaded")
                                 page.wait_for_timeout(3_000)

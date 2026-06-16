@@ -288,37 +288,56 @@ def main():
         # ── PASO 3.5: manejar página de login del webportal ──────────
         if "webportal.europoolsystem.com" in portal_page.url:
             try:
-                login_btn = portal_page.locator("a:has-text('Log in'), button:has-text('Log in')")
-                cnt = login_btn.count()
+                login_btns = portal_page.locator("a:has-text('Log in'), button:has-text('Log in')")
+                cnt = login_btns.count()
                 log(f"  Botones 'Log in' en página: {cnt}")
 
                 if cnt > 0:
-                    log("\n[PASO 3.5] Página de login. Haciendo click en botón principal...")
-                    # Hay varios botones "Log in": uno en la nav bar (inútil) y otro en el
-                    # contenido principal (el que abre Microsoft). Usar JS para encontrar el
-                    # que NO está dentro de nav/header y tiene offsetParent (es visible).
-                    portal_page.evaluate("""() => {
-                        const all = Array.from(document.querySelectorAll('a, button'))
-                            .filter(el =>
-                                el.textContent.trim() === 'Log in' &&
-                                el.offsetParent !== null
-                            );
-                        // Preferir el que no esté en nav o header
-                        const main = all.find(el => !el.closest('nav, header, [role="navigation"]'));
-                        (main || all[all.length - 1]).click();
+                    log("\n[PASO 3.5] Obteniendo URL OAuth del enlace 'Log in'...")
+
+                    # Esperar a que Angular asigne el href dinámicamente
+                    try:
+                        portal_page.wait_for_function("""() => {
+                            const a = Array.from(document.querySelectorAll('a'))
+                                .find(el => el.textContent.trim() === 'Log in' && el.href && el.href.length > 10);
+                            return !!a;
+                        }""", timeout=10_000)
+                    except Exception:
+                        pass
+
+                    # Volcar info del enlace para diagnóstico
+                    info = portal_page.evaluate("""() => {
+                        return Array.from(document.querySelectorAll('a, button'))
+                            .filter(el => el.textContent.trim() === 'Log in')
+                            .map(el => ({ tag: el.tagName, href: el.href || '', cls: el.className.substring(0,60) }));
                     }""")
+                    log(f"  Info botones Log in: {info}")
+                    guardar(portal_page, "paso35_pre_login", OUT_DIR)
 
-                    guardar(portal_page, "paso35_tras_login_btn", OUT_DIR)
+                    # Extraer href del enlace (Angular lo rellena con URL OAuth de Microsoft)
+                    oauth_url = portal_page.evaluate("""() => {
+                        const link = Array.from(document.querySelectorAll('a'))
+                            .find(el => el.textContent.trim() === 'Log in' && el.href);
+                        return link ? link.href : null;
+                    }""")
+                    log(f"  href 'Log in': {(oauth_url or 'ninguno')[:120]}")
 
-                    # Esperar redirección a Microsoft (debería ser inmediata)
+                    if oauth_url and "microsoftonline" in oauth_url:
+                        log("  Navegando directamente a Microsoft OAuth...")
+                        portal_page.goto(oauth_url)
+                    else:
+                        log("  Sin href directo a Microsoft. Haciendo click...")
+                        login_btns.first.click()
+
+                    # Esperar Microsoft
                     try:
                         portal_page.wait_for_url("**/login.microsoftonline.com/**", timeout=15_000)
                         portal_page.wait_for_load_state("domcontentloaded")
                         portal_page.wait_for_timeout(1_000)
-                        log(f"  Microsoft cargado. URL: {portal_page.url}")
+                        log(f"  Microsoft cargado: {portal_page.url[:100]}")
                         guardar(portal_page, "paso35_microsoft", OUT_DIR)
 
-                        # Selector de cuenta Microsoft — múltiples fallbacks
+                        # Seleccionar cuenta — múltiples fallbacks
                         cuenta_ok = False
                         for sel in [
                             f"[aria-label*='0001006572']",
@@ -331,11 +350,11 @@ def main():
                             try:
                                 el = portal_page.locator(sel).first
                                 if el.is_visible(timeout=3_000):
-                                    log(f"  Cuenta encontrada con: {sel}")
+                                    log(f"  Cuenta: {sel}")
                                     el.click()
                                     portal_page.wait_for_load_state("domcontentloaded")
                                     portal_page.wait_for_timeout(3_000)
-                                    log(f"  URL tras cuenta: {portal_page.url}")
+                                    log(f"  URL: {portal_page.url[:100]}")
                                     guardar(portal_page, "paso35_tras_cuenta", OUT_DIR)
                                     cuenta_ok = True
                                     break
@@ -349,14 +368,13 @@ def main():
                             portal_page.wait_for_timeout(2_000)
 
                     except Exception as e:
-                        log(f"  No redirigió a Microsoft (timeout/error): {e}")
-                        log(f"  URL actual: {portal_page.url}")
-                        guardar(portal_page, "paso35_no_microsoft", OUT_DIR)
-                        if "#/login" in portal_page.url:
-                            input("\n  Autentícate manualmente y pulsa ENTER...")
-                            portal_page.wait_for_timeout(2_000)
+                        log(f"  No redirigió a Microsoft: {e}")
+                        log(f"  URL: {portal_page.url[:100]}")
+                        guardar(portal_page, "paso35_no_ms", OUT_DIR)
+                        input("\n  Autentícate manualmente y pulsa ENTER...")
+                        portal_page.wait_for_timeout(2_000)
             except Exception as e:
-                log(f"  Gestión login falló: {e}")
+                log(f"  PASO 3.5 falló: {e}")
 
         # ── PASO 4: formulario flows/new ─────────────────────────────
         log("\n[PASO 4] Navegando al formulario flows/new...")
