@@ -105,28 +105,38 @@ class EuropoolScraper(BaseScraper):
             if "webportal.europoolsystem.com" not in page.url:
                 raise RuntimeError(f"No se pudo acceder al webportal via MY EPS: {exc}")
 
-        # ── Sesión webportal expirada → "Log in" → selector de cuenta ────────
-        # Cuando la sesión del webportal caduca aparece "You need to be logged in!"
-        # con un botón "Log in". Al pulsarlo aparece el selector de cuentas Microsoft
-        # sin pedir PIN (el token de Azure AD sigue vigente).
+        # ── Página de login del webportal → dos casos posibles ──────────────
+        # Caso A: #/login?token=JWT — Angular procesa el token y navega a #/dashboard
+        # Caso B: sin token — redirige a Microsoft → selector de cuentas (sin PIN)
         try:
             login_btn = page.locator("a:has-text('Log in'), button:has-text('Log in')")
             if login_btn.first.is_visible(timeout=5_000):
-                logger.info("[europool] Sesión webportal expirada, haciendo click en 'Log in'...")
+                logger.info("[europool] Página de login detectada, haciendo click...")
                 login_btn.first.click()
-                page.wait_for_load_state("domcontentloaded")
-                page.wait_for_timeout(2_000)
+                page.wait_for_timeout(1_000)
 
-                # Selector de cuenta Microsoft (aparece sin pedir PIN cuando el token sigue válido)
-                account = page.locator(
-                    f"[data-test-id='{settings.europool_user}'], "
-                    f"div[role='button']:has-text('{settings.europool_user}')"
-                )
-                if account.first.is_visible(timeout=8_000):
-                    logger.info(f"[europool] Seleccionando cuenta: {settings.europool_user}")
-                    account.first.click()
-                    page.wait_for_load_state("domcontentloaded")
-                    page.wait_for_timeout(3_000)
+                # Esperar que Angular navegue fuera de #/login (Caso A: SPA routing)
+                try:
+                    page.wait_for_function(
+                        "() => !window.location.hash.startsWith('#/login')",
+                        timeout=20_000
+                    )
+                except Exception:
+                    page.wait_for_timeout(2_000)
+
+                logger.debug(f"[europool] URL tras espera login: {page.url}")
+
+                # Caso B: si redirigió a Microsoft → selector de cuentas
+                if "microsoftonline.com" in page.url:
+                    account = page.locator(
+                        f"[data-test-id='{settings.europool_user}'], "
+                        f"div[role='button']:has-text('{settings.europool_user}')"
+                    )
+                    if account.first.is_visible(timeout=8_000):
+                        logger.info(f"[europool] Seleccionando cuenta: {settings.europool_user}")
+                        account.first.click()
+                        page.wait_for_load_state("domcontentloaded")
+                        page.wait_for_timeout(3_000)
         except Exception as exc:
             logger.debug(f"[europool] 'Log in' no detectado o ya autenticado: {exc}")
 

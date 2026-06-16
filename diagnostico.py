@@ -285,39 +285,61 @@ def main():
 
         guardar(portal_page, "paso3_webportal", OUT_DIR)
 
-        # ── PASO 3.5: manejar expiración de sesión webportal ─────────
-        # Cuando la sesión del webportal caduca aparece "You need to be logged in!"
-        # con botón "Log in". Pulsarlo muestra selector de cuentas sin pedir PIN.
+        # ── PASO 3.5: manejar página de login del webportal ──────────
+        # Dos casos posibles:
+        #   A) URL = #/login?token=JWT → Angular procesa el token internamente
+        #      Click "Log in" → esperar que Angular route a #/dashboard (SPA)
+        #   B) "You need to be logged in!" sin token → "Log in" redirige a Microsoft
+        #      → selector de cuentas → seleccionar cuenta (sin PIN)
         if "webportal.europoolsystem.com" in portal_page.url:
             try:
                 login_btn = portal_page.locator("a:has-text('Log in'), button:has-text('Log in')")
                 if login_btn.first.is_visible(timeout=5_000):
-                    log("\n[PASO 3.5] Sesión webportal expirada. Haciendo click en 'Log in'...")
+                    log("\n[PASO 3.5] Página de login detectada. Haciendo click en 'Log in'...")
                     login_btn.first.click()
-                    portal_page.wait_for_load_state("domcontentloaded")
-                    portal_page.wait_for_timeout(2_000)
-                    log(f"  URL tras Log in: {portal_page.url}")
+                    portal_page.wait_for_timeout(1_000)
+                    log(f"  URL tras click: {portal_page.url}")
                     guardar(portal_page, "paso35_tras_login_btn", OUT_DIR)
 
-                    # Selector de cuenta Microsoft (no necesita PIN si el token sigue vigente)
-                    account = portal_page.locator(
-                        f"[data-test-id='{EUROPOOL_USER}'], "
-                        f"div[role='button']:has-text('{EUROPOOL_USER}')"
-                    )
-                    if account.first.is_visible(timeout=8_000):
-                        log(f"  Seleccionando cuenta: {EUROPOOL_USER}")
-                        account.first.click()
-                        portal_page.wait_for_load_state("domcontentloaded")
-                        portal_page.wait_for_timeout(3_000)
-                        log(f"  URL tras selección de cuenta: {portal_page.url}")
-                        guardar(portal_page, "paso35_tras_cuenta", OUT_DIR)
-                    else:
-                        log("  Selector de cuenta no encontrado (puede que haya pedido PIN).")
-                        guardar(portal_page, "paso35_sin_cuenta", OUT_DIR)
+                    # Esperar que Angular navegue fuera de #/login
+                    # (Caso A: procesa JWT internamente y va a #/dashboard)
+                    try:
+                        portal_page.wait_for_function(
+                            "() => !window.location.hash.startsWith('#/login')",
+                            timeout=20_000
+                        )
+                    except Exception:
+                        portal_page.wait_for_timeout(2_000)
+
+                    log(f"  URL tras espera: {portal_page.url}")
+                    guardar(portal_page, "paso35_tras_espera", OUT_DIR)
+
+                    # Caso B: redirigió a Microsoft → selector de cuentas
+                    if "microsoftonline.com" in portal_page.url:
+                        account = portal_page.locator(
+                            f"[data-test-id='{EUROPOOL_USER}'], "
+                            f"div[role='button']:has-text('{EUROPOOL_USER}')"
+                        )
+                        if account.first.is_visible(timeout=8_000):
+                            log(f"  Seleccionando cuenta Microsoft: {EUROPOOL_USER}")
+                            account.first.click()
+                            portal_page.wait_for_load_state("domcontentloaded")
+                            portal_page.wait_for_timeout(3_000)
+                            log(f"  URL tras cuenta: {portal_page.url}")
+                            guardar(portal_page, "paso35_tras_cuenta", OUT_DIR)
+                        else:
+                            log("  Cuenta no encontrada (puede que haya pedido PIN).")
+                            guardar(portal_page, "paso35_sin_cuenta", OUT_DIR)
+                            input("\n  Autentícate manualmente y pulsa ENTER cuando el webportal cargue...")
+                            portal_page.wait_for_timeout(2_000)
+                    elif "#/login" in portal_page.url:
+                        # Aún en login — necesita intervención manual
+                        log("  Sigue en login tras espera.")
+                        guardar(portal_page, "paso35_stuck_login", OUT_DIR)
                         input("\n  Autentícate manualmente y pulsa ENTER cuando el webportal cargue...")
                         portal_page.wait_for_timeout(2_000)
             except Exception as e:
-                log(f"  Gestión de 'Log in' no necesaria o falló: {e}")
+                log(f"  No se detectó 'Log in' o falló: {e}")
 
         # ── PASO 4: formulario flows/new ─────────────────────────────
         log("\n[PASO 4] Navegando al formulario flows/new...")
