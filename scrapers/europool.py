@@ -88,14 +88,29 @@ class EuropoolScraper(BaseScraper):
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(3_000)
 
-        # Caso 1: hub "YOUR PORTALS" en my.europoolsystem.com → navegar directo al webportal
+        # Caso 1: hub "YOUR PORTALS" en my.europoolsystem.com
+        # MY EPS abre webportal en una NUEVA PESTAÑA — hay que capturarla
         if "my.europoolsystem.com" in page.url or page.locator("text=MY EPS").count() > 0:
-            logger.debug("[europool] Hub detectado, navegando directo al webportal")
-            page.goto(DASHBOARD_URL)
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(2_000)
-            logger.info("[europool] Sesión activa (via hub → webportal)")
-            return
+            logger.debug("[europool] Hub detectado, haciendo click en MY EPS")
+            try:
+                tile = page.locator("text=MY EPS").first
+                tile.wait_for(state="visible", timeout=10_000)
+                with self._context.expect_page(timeout=15_000) as new_page_info:
+                    tile.click()
+                new_page = new_page_info.value
+                new_page.wait_for_load_state("networkidle")
+                new_page.wait_for_timeout(3_000)
+                self._page = new_page  # usar la nueva pestaña de webportal
+                logger.info(f"[europool] Webportal abierto en nueva pestaña: {new_page.url}")
+                return
+            except Exception as exc:
+                logger.warning(f"[europool] Nueva pestaña no detectada: {exc}")
+                # Fallback: buscar si ya hay una pestaña de webportal abierta
+                for p in self._context.pages:
+                    if "webportal.europoolsystem.com" in p.url:
+                        self._page = p
+                        logger.info(f"[europool] Webportal encontrado en pestaña existente: {p.url}")
+                        return
 
         # Caso 2: ya dentro del portal webportal sin necesitar login
         if self._ya_autenticado():

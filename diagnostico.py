@@ -236,13 +236,50 @@ def main():
         else:
             log("  Sesión activa, no hace falta login.")
 
-        # ── PASO 3: navegar al dashboard ─────────────────────────────
-        log("\n[PASO 3] Navegando a dashboard...")
-        page.goto(DASHBOARD_URL)
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(3_000)
-        log(f"  URL: {page.url}")
-        guardar(page, "paso3_dashboard", OUT_DIR)
+        # ── PASO 3: acceder al webportal via MY EPS ──────────────────
+        log("\n[PASO 3] Buscando tile MY EPS para abrir webportal...")
+        guardar(page, "paso3_hub_antes", OUT_DIR)
+
+        # MY EPS abre webportal.europoolsystem.com en NUEVA PESTAÑA
+        # page.goto() no funciona porque la sesión es de my.europoolsystem.com
+        portal_page = None
+        try:
+            tile = page.locator("text=MY EPS").first
+            if tile.is_visible(timeout=5_000):
+                log("  Tile MY EPS encontrado. Haciendo click y esperando nueva pestaña...")
+                with context.expect_page(timeout=15_000) as new_page_info:
+                    tile.click()
+                portal_page = new_page_info.value
+                portal_page.wait_for_load_state("networkidle")
+                portal_page.wait_for_timeout(3_000)
+                log(f"  Nueva pestaña URL: {portal_page.url}")
+                guardar(portal_page, "paso3_nueva_pestana_webportal", OUT_DIR)
+            else:
+                log("  Tile MY EPS NO encontrado.")
+        except Exception as e:
+            log(f"  ERROR al click MY EPS / nueva pestaña: {e}")
+
+        # Si MY EPS no abrió nueva pestaña, comprobar si hay otras pestañas abiertas
+        if portal_page is None:
+            log("  Comprobando otras pestañas abiertas...")
+            for p in context.pages:
+                log(f"    Pestaña: {p.url}")
+                if "webportal.europoolsystem.com" in p.url:
+                    portal_page = p
+                    log(f"  Webportal encontrado en pestaña existente: {p.url}")
+                    break
+
+        if portal_page is None:
+            log("  NO se pudo abrir webportal via MY EPS.")
+            log("  Intentando goto directo como fallback...")
+            page.goto(DASHBOARD_URL)
+            page.wait_for_timeout(4_000)
+            log(f"  URL tras goto directo: {page.url}")
+            portal_page = page
+
+        # A partir de aquí usar portal_page
+        page = portal_page
+        log(f"\n  URL webportal: {page.url}")
 
         # ── PASO 4: navegar al formulario ────────────────────────────
         log("\n[PASO 4] Navegando al formulario flows/new...")
