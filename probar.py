@@ -14,7 +14,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 PORTAL_URL  = "https://webportal.europoolsystem.com"
-PROFILE_DIR = Path("output") / "edge_profile"
+PROFILE_DIR = Path(__file__).resolve().parent / "output" / "edge_profile"
 
 
 def info(page, etiqueta):

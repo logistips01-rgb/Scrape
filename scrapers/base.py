@@ -12,8 +12,9 @@ from playwright.sync_api import BrowserContext, Page, Playwright, sync_playwrigh
 from config.settings import settings
 from core.models import Albaran, DeclarationStatus, DeclaracionResult
 
-# Directorio de perfil dedicado al watcher (persiste la sesión automáticamente)
-_EDGE_PROFILE_DIR = settings.output_dir / "edge_profile"
+# Perfil de Edge siempre junto al proyecto, independiente de OUTPUT_DIR
+_ROOT = Path(__file__).resolve().parent.parent
+_EDGE_PROFILE_DIR = _ROOT / "output" / "edge_profile"
 
 
 class BaseScraper(ABC):

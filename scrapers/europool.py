@@ -180,7 +180,15 @@ class EuropoolScraper(BaseScraper):
 
     def _ya_autenticado(self) -> bool:
         url = self._page.url if self._page else ""
-        return "europoolsystem.com" in url and "microsoftonline" not in url
+        if "microsoftonline" in url or "europoolsystem.com" not in url:
+            return False
+        # Si hay botón "Log in" visible, NO estamos autenticados
+        try:
+            if self._page.locator("a:has-text('Log in'), button:has-text('Log in')").count() > 0:
+                return False
+        except Exception:
+            pass
+        return True
 
     # ------------------------------------------------------------------
     # Declaración de envases — formulario /#/flows/new
