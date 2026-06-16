@@ -93,7 +93,7 @@ class EuropoolScraper(BaseScraper):
         logger.debug("[europool] Haciendo click en MY EPS...")
         try:
             tile = page.locator("text=MY EPS").first
-            tile.wait_for(timeout=15_000)          # esperar presencia en DOM (no visibilidad)
+            tile.wait_for(state="attached", timeout=15_000)  # solo presencia en DOM, no visibilidad
             tile.scroll_into_view_if_needed()
             tile.click(force=True)                 # force=True bypasses visibility checks
             page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=20_000)

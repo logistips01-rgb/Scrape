@@ -253,7 +253,7 @@ def main():
         # Intentar automáticamente con force=True (bypassa checks de visibilidad)
         try:
             tile = page.locator("text=MY EPS").first
-            tile.wait_for(timeout=10_000)          # solo esperar presencia en DOM
+            tile.wait_for(state="attached", timeout=10_000)  # solo presencia en DOM, no visibilidad
             tile.scroll_into_view_if_needed()
             tile.click(force=True)                 # force=True bypassa checks de visibilidad
             page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=20_000)
