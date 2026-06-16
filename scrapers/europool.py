@@ -105,65 +105,9 @@ class EuropoolScraper(BaseScraper):
             if "webportal.europoolsystem.com" not in page.url:
                 raise RuntimeError(f"No se pudo acceder al webportal via MY EPS: {exc}")
 
-        # ── Página de login → extraer href OAuth del enlace "Log in" y navegar ──────
-        try:
-            login_btns = page.locator("a:has-text('Log in'), button:has-text('Log in')")
-            if login_btns.count() > 0 and login_btns.first.is_visible(timeout=5_000):
-                logger.info("[europool] Página de login detectada, obteniendo URL OAuth...")
-
-                # Esperar a que Angular asigne el href dinámicamente
-                try:
-                    page.wait_for_function("""() => {
-                        const a = Array.from(document.querySelectorAll('a'))
-                            .find(el => el.textContent.trim() === 'Log in' && el.href && el.href.length > 10);
-                        return !!a;
-                    }""", timeout=10_000)
-                except Exception:
-                    pass
-
-                oauth_url = page.evaluate("""() => {
-                    const link = Array.from(document.querySelectorAll('a'))
-                        .find(el => el.textContent.trim() === 'Log in' && el.href);
-                    return link ? link.href : null;
-                }""")
-
-                if oauth_url and "microsoftonline" in oauth_url:
-                    logger.info(f"[europool] Navegando a Microsoft OAuth directamente")
-                    page.goto(oauth_url)
-                else:
-                    logger.info(f"[europool] Sin href OAuth, haciendo click...")
-                    login_btns.first.click()
-
-                # Esperar Microsoft
-                try:
-                    page.wait_for_url("**/login.microsoftonline.com/**", timeout=15_000)
-                    page.wait_for_load_state("domcontentloaded")
-                    page.wait_for_timeout(1_000)
-                    logger.info(f"[europool] Microsoft cargado: {page.url[:80]}")
-
-                    # Seleccionar cuenta — múltiples fallbacks
-                    for sel in [
-                        f"[aria-label*='0001006572']",
-                        f"[aria-label*='{settings.europool_user}']",
-                        f"div[role='option']:has-text('0001006572')",
-                        "div[role='option']:visible",
-                        "div.account-button:visible",
-                        "[tabindex='0'][role='option']:visible",
-                    ]:
-                        try:
-                            el = page.locator(sel).first
-                            if el.is_visible(timeout=3_000):
-                                logger.info(f"[europool] Cuenta encontrada ({sel})")
-                                el.click()
-                                page.wait_for_load_state("domcontentloaded")
-                                page.wait_for_timeout(3_000)
-                                break
-                        except Exception:
-                            continue
-                except Exception as exc:
-                    logger.warning(f"[europool] No redirigió a Microsoft: {exc}")
-        except Exception as exc:
-            logger.debug(f"[europool] 'Log in' no detectado o ya autenticado: {exc}")
+        # ── Si aterrizamos en #/login, completar el OAuth de Microsoft ──────
+        if "#/login" in page.url:
+            self._manejar_login_page()
 
         if not self._ya_autenticado():
             self._screenshot("login_fallido")
@@ -173,16 +117,175 @@ class EuropoolScraper(BaseScraper):
 
         logger.info("[europool] Login OK")
 
+    def _manejar_login_page(self) -> None:
+        """
+        Maneja la página #/login completando el OAuth de Microsoft.
+
+        La app Angular usa MSAL y puede abrir el login de Microsoft en:
+          - Un popup (loginPopup) → escuchamos el evento 'popup'
+          - La misma pestaña (loginRedirect) → wait_for_url
+        Fallback: navegar a #/login sin token para forzar redirección OAuth.
+        """
+        page = self._page
+        logger.info("[europool] Página de login detectada, iniciando OAuth...")
+
+        # Localizar "Log in" con selector amplio (puede ser cualquier elemento Angular)
+        login_btn = page.locator("text=Log in").first
+        try:
+            login_btn.wait_for(state="visible", timeout=8_000)
+        except Exception:
+            logger.debug("[europool] Botón 'Log in' no visible — intentando igualmente")
+
+        # ── Intento 1: popup (MSAL loginPopup abre nueva ventana) ────────────
+        popup_handled = False
+        popup_ref: list = []
+
+        def _on_popup(p) -> None:
+            popup_ref.append(p)
+
+        page.on("popup", _on_popup)
+        try:
+            login_btn.click(force=True, timeout=5_000)
+        except Exception as exc:
+            logger.debug(f"[europool] Click en 'Log in': {exc}")
+
+        # Esperar hasta 6 s para que aparezca el popup
+        for _ in range(12):
+            if popup_ref:
+                break
+            page.wait_for_timeout(500)
+        page.remove_listener("popup", _on_popup)
+
+        if popup_ref:
+            popup = popup_ref[0]
+            logger.info(f"[europool] Popup OAuth detectado: {popup.url[:80]}")
+            try:
+                popup.wait_for_load_state("domcontentloaded")
+                self._completar_microsoft_oauth(popup)
+                # Esperar a que el popup cierre (MSAL cierra el popup al terminar)
+                popup.wait_for_event("close", timeout=40_000)
+                logger.info("[europool] Popup OAuth cerrado — esperando callback...")
+                page.wait_for_timeout(4_000)
+                popup_handled = True
+            except Exception as exc:
+                logger.warning(f"[europool] Error procesando popup OAuth: {exc}")
+
+        # ── Intento 2: navegación en misma página (loginRedirect) ────────────
+        if not popup_handled:
+            if "microsoftonline" in page.url:
+                logger.info("[europool] Misma pestaña → Microsoft OAuth")
+                self._completar_microsoft_oauth(page)
+                try:
+                    page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=30_000)
+                    page.wait_for_load_state("domcontentloaded")
+                    page.wait_for_timeout(3_000)
+                    popup_handled = True
+                except Exception as exc:
+                    logger.warning(f"[europool] No volvió al webportal: {exc}")
+            else:
+                # No popup y no navegó a Microsoft: esperar un poco más
+                try:
+                    page.wait_for_url("**/login.microsoftonline.com/**", timeout=10_000)
+                    logger.info("[europool] Navegación retrasada a Microsoft detectada")
+                    self._completar_microsoft_oauth(page)
+                    page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=30_000)
+                    page.wait_for_load_state("domcontentloaded")
+                    page.wait_for_timeout(3_000)
+                    popup_handled = True
+                except Exception:
+                    pass
+
+        # ── Intento 3: goto #/login sin token para re-trigger el OAuth ───────
+        if not popup_handled and "#/login" in page.url:
+            logger.info("[europool] Fallback: navegando a #/login sin token...")
+            page.goto("https://webportal.europoolsystem.com/#/login")
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(3_000)
+            if "microsoftonline" in page.url:
+                self._completar_microsoft_oauth(page)
+                try:
+                    page.wait_for_url("**/webportal.europoolsystem.com/**", timeout=30_000)
+                    page.wait_for_load_state("domcontentloaded")
+                    page.wait_for_timeout(3_000)
+                except Exception as exc:
+                    logger.warning(f"[europool] Fallback sin token falló: {exc}")
+
+    def _completar_microsoft_oauth(self, p) -> None:
+        """
+        Completa el OAuth de Microsoft en la página (o popup) dada.
+        Maneja:
+          - Selector de cuenta (sesión ya activa, el más habitual)
+          - Formulario email + contraseña (sesión nueva)
+          - Prompt "Mantener sesión iniciada"
+        """
+        # Esperar a que la página de Microsoft esté lista
+        try:
+            p.wait_for_url("**/login.microsoftonline.com/**", timeout=12_000)
+        except Exception:
+            pass
+        p.wait_for_load_state("domcontentloaded")
+        p.wait_for_timeout(1_000)
+        logger.info(f"[europool] Microsoft OAuth: {p.url[:60]}")
+
+        # ── Caso A: selector de cuenta (sesión SSO activa) ────────────────
+        account_clicked = False
+        for sel in [
+            f"[aria-label*='0001006572']",
+            f"[aria-label*='{settings.europool_user}']",
+            f"div[role='option']:has-text('0001006572')",
+            "div[role='option']:visible",
+            "div.account-button:visible",
+            "[tabindex='0'][role='option']:visible",
+        ]:
+            try:
+                el = p.locator(sel).first
+                if el.is_visible(timeout=2_000):
+                    logger.info(f"[europool] Cuenta seleccionada ({sel})")
+                    el.click()
+                    p.wait_for_load_state("domcontentloaded")
+                    p.wait_for_timeout(2_000)
+                    account_clicked = True
+                    break
+            except Exception:
+                continue
+
+        # ── Caso B: formulario email + contraseña (sin sesión SSO) ───────
+        if not account_clicked:
+            try:
+                email_input = p.locator(MS_EMAIL_INPUT)
+                if email_input.is_visible(timeout=4_000):
+                    logger.info("[europool] Introduciendo credenciales Microsoft...")
+                    email_input.fill(settings.europool_user)
+                    p.locator(MS_NEXT_BTN).click()
+                    p.wait_for_load_state("domcontentloaded")
+                    p.wait_for_timeout(1_000)
+                    pw = p.locator(MS_PASSWORD_INPUT)
+                    if pw.is_visible(timeout=5_000):
+                        pw.fill(settings.europool_password)
+                        p.locator(MS_SIGNIN_BTN).click()
+                        p.wait_for_load_state("domcontentloaded")
+                        p.wait_for_timeout(2_000)
+            except Exception as exc:
+                logger.debug(f"[europool] Flujo email/contraseña: {exc}")
+
+        # ── "Mantener sesión iniciada?" → Sí ────────────────────────────
+        try:
+            btn = p.locator(MS_KEEP_YES_BTN)
+            if btn.is_visible(timeout=5_000):
+                logger.info("[europool] Confirmando 'Mantener sesión'")
+                btn.click()
+                p.wait_for_load_state("domcontentloaded")
+                p.wait_for_timeout(2_000)
+        except Exception:
+            pass
+
     def _ya_autenticado(self) -> bool:
         url = self._page.url if self._page else ""
         if "microsoftonline" in url or "europoolsystem.com" not in url:
             return False
-        # Si hay botón "Log in" visible, NO estamos autenticados
-        try:
-            if self._page.locator("a:has-text('Log in'), button:has-text('Log in')").count() > 0:
-                return False
-        except Exception:
-            pass
+        # Todavía en la página de login
+        if "#/login" in url:
+            return False
         return True
 
     # ------------------------------------------------------------------
@@ -307,18 +410,34 @@ class EuropoolScraper(BaseScraper):
             # Estrategia 1: getByLabel (funciona si el label está correctamente vinculado)
             field = page.get_by_label(label_text, exact=False)
             if field.first.is_visible(timeout=2_000):
+                field.first.triple_click()
                 field.first.fill(value)
                 return
         except Exception:
             pass
 
         try:
-            # Estrategia 2: mat-form-field que contiene la label con ese texto
+            # Estrategia 2: mat-form-field que contiene mat-label con ese texto
             container = page.locator(
                 f"mat-form-field:has(mat-label:has-text('{label_text}'))"
             )
             inp = container.locator("input").first
             if inp.is_visible(timeout=2_000):
+                inp.triple_click()
+                inp.fill(value)
+                return
+        except Exception:
+            pass
+
+        try:
+            # Estrategia 3: buscar el primer token de la label (más tolerante a variaciones)
+            first_word = label_text.split()[0]
+            container = page.locator(
+                f"mat-form-field:has(mat-label:has-text('{first_word}'))"
+            ).filter(has_text=label_text.split()[-1])
+            inp = container.locator("input").first
+            if inp.is_visible(timeout=1_500):
+                inp.triple_click()
                 inp.fill(value)
                 return
         except Exception:
