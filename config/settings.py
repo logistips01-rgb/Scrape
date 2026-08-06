@@ -41,6 +41,7 @@ class _Settings:
     browser_timeout_ms: int = int(os.getenv("BROWSER_TIMEOUT_MS", "30000"))
     browser_slow_mo:    int = int(os.getenv("BROWSER_SLOW_MO", "0"))
     retry_attempts:     int = int(os.getenv("RETRY_ATTEMPTS", "3"))
+    record_video:      bool = _bool("RECORD_VIDEO", False)
 
     # Impresión
     auto_print:   bool = _bool("AUTO_PRINT", True)

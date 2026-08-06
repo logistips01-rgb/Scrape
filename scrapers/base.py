@@ -45,6 +45,12 @@ class BaseScraper(ABC):
                     viewport={"width": 1440, "height": 900},
                     locale="es-ES",
                 )
+                # Grabar vídeo de la sesión si está activado en .env
+                if settings.record_video:
+                    video_dir = settings.output_dir / "videos"
+                    video_dir.mkdir(parents=True, exist_ok=True)
+                    kwargs["record_video_dir"] = str(video_dir)
+                    kwargs["record_video_size"] = {"width": 1440, "height": 900}
                 if channel:
                     kwargs["channel"] = channel
 
@@ -66,6 +72,14 @@ class BaseScraper(ABC):
         pass
 
     def _stop_browser(self) -> None:
+        # Capturar la ruta del vídeo antes de cerrar (se finaliza al cerrar el context)
+        video_path = None
+        if settings.record_video and self._page:
+            try:
+                video_path = self._page.video.path() if self._page.video else None
+            except Exception:
+                video_path = None
+
         if self._context:
             try:
                 self._context.close()
@@ -73,6 +87,9 @@ class BaseScraper(ABC):
                 pass
         if self._playwright:
             self._playwright.stop()
+
+        if video_path:
+            logger.info(f"[{self.portal_name}] Vídeo de la sesión guardado: {video_path}")
 
     def _screenshot(self, name: str) -> Path:
         settings.screenshots_dir.mkdir(parents=True, exist_ok=True)
