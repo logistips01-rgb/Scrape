@@ -19,6 +19,12 @@ class _Settings:
     europool_url:      str  = os.getenv("EUROPOOL_URL",      "https://webportal.europoolsystem.com")
     europool_user:     str  = os.getenv("EUROPOOL_USER",     "")
     europool_password: str  = os.getenv("EUROPOOL_PASSWORD", "")
+    # Modo de declaración: "web" (rellenar formulario) o "api" (llamada directa a la API)
+    europool_modo:        str = os.getenv("EUROPOOL_MODO",        "web").lower()
+    # Opcionales para el modo API (vacío = se detectan solos)
+    europool_customer_id: str = os.getenv("EUROPOOL_CUSTOMER_ID", "")
+    europool_flow_type:   str = os.getenv("EUROPOOL_FLOW_TYPE",   "")
+    europool_from_id:     str = os.getenv("EUROPOOL_FROM_ID",     "")
 
     # IFCO
     ifco_url:      str = os.getenv("IFCO_URL",      "https://www.ifco-online.com")
