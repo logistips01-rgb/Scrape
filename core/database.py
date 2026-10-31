@@ -33,7 +33,8 @@ def init_db() -> None:
 def ya_declarado(num_albaran: str, portal: str) -> bool:
     with _conn() as con:
         row = con.execute(
-            "SELECT id FROM declaraciones WHERE num_albaran=? AND portal=? AND status='confirmed'",
+            "SELECT id FROM declaraciones WHERE num_albaran=? AND portal=? "
+            "AND status IN ('submitted', 'confirmed')",
             (num_albaran, portal),
         ).fetchone()
     return row is not None
